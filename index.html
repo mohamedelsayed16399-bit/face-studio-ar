@@ -11,7 +11,7 @@ header{padding:14px 14px 6px;text-align:center}
 h1{margin:0;font-size:22px;color:#ffd24a}
 .sub{font-size:12px;color:#b9b2c9;margin-top:2px}
 nav{display:flex;gap:6px;padding:8px;position:sticky;top:0;background:#12101c;z-index:5}
-nav button{flex:1;padding:10px 4px;border:0;border-radius:10px;background:#2a2540;color:#f3efe6;font-size:15px;font-weight:700}
+nav button{flex:1;padding:10px 2px;border:0;border-radius:10px;background:#2a2540;color:#f3efe6;font-size:13px;font-weight:700}
 nav button.on{background:#ffd24a;color:#1a1530}
 main{padding:8px 12px 80px;max-width:760px;margin:auto}
 section{display:none}section.on{display:block}
@@ -49,6 +49,7 @@ video{width:100%;border-radius:10px;background:#000}
 <button data-t="swap" class="on">🔄 تبديل وجوه</button>
 <button data-t="tpl">🎭 شخصيات</button>
 <button data-t="vid">🎬 فيديو</button>
+<button data-t="vf">🎞️ وش بفيديو</button>
 </nav>
 <main>
 
@@ -137,6 +138,34 @@ video{width:100%;border-radius:10px;background:#000}
 <div class="status" id="vdSt"></div>
 <div class="note">الفيديو بيتسجّل في الوقت الحقيقي. سيب الشاشة شغالة والتبويب مفتوح لحد ما يخلص.</div>
 <div id="vdRes"></div>
+</div>
+</section>
+
+<section id="vf">
+<div class="card">
+<h3>١. الفيديو</h3>
+<div class="row"><label class="b">🎞️ اختار فيديو<input type="file" id="vfFile" accept="video/*"></label></div>
+<video id="vfVid" playsinline preload="auto" controls></video>
+<div class="status" id="vfInfo">اختار فيديو قصير فيه وش واضح. الحد الأقصى 15 ثانية (لو أطول بيتقص أول 15 ثانية). المعالجة بتتم على جهازك إطار بإطار وبتاخد وقت.</div>
+</div>
+<div class="card">
+<h3>٢. عايز تعمل إيه؟</h3>
+<div class="row"><select id="vfMode"><option value="photo">حط وش من صورة على الوش اللي في الفيديو</option><option value="two">بدّل وشّين في الفيديو</option></select></div>
+<div id="vfPBox">
+<div class="row"><label class="b">📷 صورة الوش<input type="file" id="vfPFile" accept="image/*"></label><button class="b g" id="vfPDet">🔍 دوّر</button></div>
+<canvas class="view" id="vfPCv" width="300" height="200"></canvas>
+<div class="status" id="vfPSt">اختار صورة فيها وش واضح.</div>
+<div class="row"><span class="note">حجم الدايرة اليدوي</span><input type="range" id="vfPSz" min="8" max="45" value="20"><button class="b g" id="vfPClr">مسح</button></div>
+</div>
+<div class="row"><span>السرعة/الجودة</span><select id="vfFps"><option value="8">سريع (8 إطار/ث)</option><option value="12" selected>متوسط (12 إطار/ث)</option><option value="15">أحسن (15 إطار/ث)</option></select>
+<select id="vfSize"><option value="360">صغير 360</option><option value="480" selected>480</option><option value="640">كبير 640</option></select></div>
+</div>
+<div class="card">
+<div class="row"><button class="b y" id="vfGo">▶️ ابدأ المعالجة والتصدير</button><button class="b r" id="vfStop" disabled>⏹️ إلغاء</button></div>
+<div class="status" id="vfSt"></div>
+<canvas class="view" id="vfCv" width="270" height="480"></canvas>
+<div id="vfRes"></div>
+<div class="note">الفيديو بيتصدّر عليه علامة "للمرح" وبنفس صوت الفيديو الأصلي. سيب الشاشة شغالة لحد ما يخلص. استخدم فيديوهات ناس موافقة بس.</div>
 </div>
 </section>
 </main>
@@ -695,7 +724,140 @@ $('#vdPrev').onclick=()=>start(false);
 $('#vdRec').onclick=()=>start(true);
 $('#vdStop').onclick=()=>{stopRun(true);$('#vdSt').textContent='اتوقف.'};
 (function(){const c=$('#vdCv');const g=c.getContext('2d');g.fillStyle='#0b0a12';g.fillRect(0,0,c.width,c.height);T(g,'🎬',c.width/2,c.height/2,90,'#fff')})();
-window.__dbg={clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
+
+/* ---------- تبديل الوجوه في فيديو ---------- */
+let lmV=null;
+function getLMV(){
+  if(lmV)return lmV;
+  lmV=(async()=>{
+    const v=await import(MP+'/vision_bundle.mjs');
+    const fs=await v.FilesetResolver.forVisionTasks(MP+'/wasm');
+    const model='https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+    const mkl=d=>v.FaceLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:model,delegate:d},runningMode:'VIDEO',numFaces:4});
+    try{return await mkl('GPU')}catch(e){return await mkl('CPU')}
+  })();
+  lmV.catch(()=>{lmV=null});
+  return lmV;
+}
+const vfP=new Slot($('#vfPCv'),$('#vfPFile'),$('#vfPDet'),$('#vfPClr'),$('#vfPSz'),$('#vfPSt'));
+const vf={frames:[],cancel:false,busy:false,fps:12,W:0,H:0,dur:0,url:null};
+$('#vfMode').onchange=()=>{$('#vfPBox').style.display=$('#vfMode').value==='photo'?'':'none'};
+$('#vfFile').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  if(vf.url)URL.revokeObjectURL(vf.url);vf.url=URL.createObjectURL(f);
+  const v=$('#vfVid');v.src=vf.url;
+  v.onloadedmetadata=()=>{
+    const d=v.duration;
+    $('#vfInfo').textContent=(isFinite(d)?'المدة '+d.toFixed(1)+' ث':'')+(d>15?' (هيتقص أول 15 ث)':'')+' | '+v.videoWidth+'x'+v.videoHeight+(f.size>80e6?' | الملف كبير ممكن يبطّأ':'');
+  };
+  v.onerror=()=>{$('#vfInfo').textContent='الفيديو ده مش بيفتح في المتصفح. جرّب mp4 عادي.'};
+};
+function seekTo(v,t){
+  return new Promise(res=>{let done=false;const fin=()=>{if(done)return;done=true;v.removeEventListener('seeked',fin);res()};
+    v.addEventListener('seeked',fin);setTimeout(fin,3000);v.currentTime=t});
+}
+function trackStep(tracks,cur,K){
+  if(tracks.length<K){
+    if(cur.length<K)return tracks;
+    return cur.slice().sort((a,b)=>b.rx*b.ry-a.rx*a.ry).slice(0,K).sort((a,b)=>a.cx-b.cx).map(f=>({...f,miss:0}));
+  }
+  const used=new Set();
+  return tracks.map(t=>{
+    let bi=-1,bd=1e18;
+    cur.forEach((f,i)=>{if(used.has(i))return;const d=Math.hypot(f.cx-t.cx,f.cy-t.cy);if(d<bd){bd=d;bi=i}});
+    if(bi>=0&&bd<Math.max(t.rx,t.ry)*2.5){
+      used.add(bi);const f=cur[bi],k=0.65,m=(a,b)=>a+(b-a)*k;
+      return{cx:m(t.cx,f.cx),cy:m(t.cy,f.cy),rx:m(t.rx,f.rx),ry:m(t.ry,f.ry),rot:m(t.rot,f.rot),miss:0};
+    }
+    return{...t,miss:t.miss+1};
+  });
+}
+async function vfProcess(){
+  const v=$('#vfVid'),mode=$('#vfMode').value,K=mode==='photo'?1:2;
+  const S=vfP.pick();
+  if(!v.src||!isFinite(v.duration)){$('#vfSt').textContent='اختار الفيديو الأول';return false}
+  if(mode==='photo'&&(!vfP.img||!S)){$('#vfSt').textContent='اختار صورة وش (ودوس على الوش لو ما اتلقاش)';return false}
+  const fps=+$('#vfFps').value,dur=Math.min(v.duration,15),n=Math.max(1,Math.floor(dur*fps));
+  const sc=Math.min(1,+$('#vfSize').value/Math.max(v.videoWidth,v.videoHeight));
+  const W=Math.max(2,Math.round(v.videoWidth*sc/2)*2),H=Math.max(2,Math.round(v.videoHeight*sc/2)*2);
+  Object.assign(vf,{fps,W,H,dur:n/fps,frames:[],cancel:false});
+  const out=$('#vfCv');out.width=W;out.height=H;const og=out.getContext('2d');
+  const c=mk(W,H),g=c.getContext('2d',{willReadFrequently:true});
+  $('#vfSt').textContent='بحمّل كاشف الوجوه...';
+  let lm;try{lm=await getLMV()}catch(e){$('#vfSt').textContent='تعذّر تحميل كاشف الوجوه (محتاج نت)';return false}
+  v.pause();v.muted=true;
+  let tracks=[],found=0,t0=performance.now();
+  for(let i=0;i<n;i++){
+    if(vf.cancel)return false;
+    await seekTo(v,i/fps+0.001);
+    g.drawImage(v,0,0,W,H);
+    let cur=[];
+    try{cur=lm.detectForVideo(c,Math.round(i*1000/fps)+1).faceLandmarks.map(p=>toEllipse(p,W,H))}catch(e){}
+    tracks=trackStep(tracks,cur,K);
+    const ok=tracks.length===K&&tracks.every(t=>t.miss<=3);
+    og.drawImage(c,0,0);
+    if(ok){
+      found++;
+      if(mode==='photo')og.drawImage(faceLayer(vfP.img,S,tracks[0],W,H,c),0,0);
+      else{
+        og.drawImage(faceLayer(c,tracks[1],tracks[0],W,H,c),0,0);
+        og.drawImage(faceLayer(c,tracks[0],tracks[1],W,H,c),0,0);
+      }
+    }
+    watermark(out);
+    vf.frames.push(await new Promise(r=>out.toBlob(r,'image/jpeg',0.85)));
+    const el=(performance.now()-t0)/1000,eta=el/(i+1)*(n-i-1);
+    $('#vfSt').textContent='معالجة '+(i+1)+' / '+n+' إطار | باقي حوالي '+Math.ceil(eta)+' ث | وش اتلقى في '+found+' إطار';
+  }
+  vf.found=found;vf.procSec=(performance.now()-t0)/1000;
+  return true;
+}
+let vfAC=null,vfSrc=null;
+async function vfExport(){
+  const v=$('#vfVid'),out=$('#vfCv'),g=out.getContext('2d'),n=vf.frames.length,fps=vf.fps;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!vfAC){vfAC=new AC();try{vfSrc=vfAC.createMediaElementSource(v)}catch(e){vfSrc=null}}
+  await vfAC.resume();
+  const dest=vfAC.createMediaStreamDestination();
+  if(vfSrc){try{vfSrc.disconnect()}catch(e){}vfSrc.connect(dest)}
+  const stream=out.captureStream(30);
+  dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+  const types=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  const mt=types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));
+  if(!mt){$('#vfSt').textContent='المتصفح ده مش بيدعم تسجيل الفيديو';return}
+  const rec=new MediaRecorder(stream,{mimeType:mt,videoBitsPerSecond:3e6});const chunks=[];
+  rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const done=new Promise(r=>rec.onstop=r);
+  v.muted=false;await seekTo(v,0.001);
+  let idx=-1,bmp=null,pend=false;
+  rec.start(500);
+  try{await v.play()}catch(e){}
+  await new Promise(res=>{
+    const loop=async()=>{
+      if(vf.cancel||v.ended||v.currentTime>=vf.dur-0.03){res();return}
+      const i=Math.min(n-1,Math.floor(v.currentTime*fps));
+      if(i!==idx&&!pend){pend=true;try{bmp=await createImageBitmap(vf.frames[i]);idx=i}catch(e){}pend=false}
+      if(bmp)g.drawImage(bmp,0,0);
+      $('#vfSt').textContent='بيتصدّر الفيديو: '+v.currentTime.toFixed(1)+' / '+vf.dur.toFixed(1)+' ث';
+      requestAnimationFrame(loop);
+    };loop();
+  });
+  v.pause();v.muted=true;
+  if(rec.state!=='inactive')rec.stop();
+  await done;
+  if(vf.cancel)return;
+  const blob=new Blob(chunks,{type:mt.split(';')[0]}),url=URL.createObjectURL(blob),ext=mt.startsWith('video/mp4')?'mp4':'webm';
+  $('#vfRes').innerHTML='<h3>✅ الفيديو جاهز ('+(blob.size/1048576).toFixed(1)+' ميجا)</h3><video controls playsinline src="'+url+'"></video><div class="row"><a class="b y" download="face-video.'+ext+'" href="'+url+'">💾 حمّل الفيديو</a></div>';
+  $('#vfSt').textContent='خلص. وش اتلقى في '+vf.found+' من '+n+' إطار. المعالجة خدت '+vf.procSec.toFixed(0)+' ث.';
+}
+$('#vfGo').onclick=async()=>{
+  if(vf.busy)return;vf.busy=true;$('#vfGo').disabled=true;$('#vfStop').disabled=false;$('#vfRes').innerHTML='';
+  try{if(await vfProcess())await vfExport()}catch(e){$('#vfSt').textContent='حصل خطأ: '+e.message}
+  vf.busy=false;$('#vfGo').disabled=false;$('#vfStop').disabled=true;
+};
+$('#vfStop').onclick=()=>{vf.cancel=true;$('#vfSt').textContent='اتلغى.'};
+
+window.__dbg={vf,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
 </html>
