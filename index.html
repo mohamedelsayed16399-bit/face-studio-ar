@@ -86,7 +86,7 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -579,7 +579,7 @@ function nnSim(src,dst){
 }
 function nnCrop(img,M,size){const c=mk(size,size),g=c.getContext('2d',{willReadFrequently:true});g.imageSmoothingQuality='high';g.setTransform(M[0],M[1],M[2],M[3],M[4],M[5]);g.drawImage(img,0,0);return c}
 function nnTensor(c,mean,std){const s=c.width,d=c.getContext('2d').getImageData(0,0,s,s).data,t=new Float32Array(3*s*s);for(let i=0;i<s*s;i++)for(let q=0;q<3;q++)t[q*s*s+i]=(d[i*4+q]-mean)/std;return new ort.Tensor('float32',t,[1,3,s,s])}
-async function nnSwap(srcImg,S,tgtImg,T,say,strength=1){
+async function nnSwap(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   const m=await nnLoad(say);
   say('بحسب بصمة الوش...');await new Promise(r=>setTimeout(r,30));
   const Ms=nnSim(nnKps(S),ARC_T),cs=nnCrop(srcImg,Ms,112);
@@ -607,6 +607,12 @@ async function nnSwap(srcImg,S,tgtImg,T,say,strength=1){
   const cm=mk(128,128),cg=cm.getContext('2d');if('filter' in cg)cg.filter='blur(5px)';cg.fillStyle='#000';cg.fillRect(9,9,110,110);
   lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
   g.globalAlpha=strength;g.drawImage(L,0,0);g.globalAlpha=1;
+  if(keepMouth&&T.W&&T.W.length>NI){ // keep the target's own mouth (shape, teeth) so the expression doesn't change
+    const lp=T.W.slice(NI);let mx=0,my=0;lp.forEach(p=>{mx+=p[0];my+=p[1]});mx/=lp.length;my/=lp.length;
+    const mm=mk(W,H),mg2=mm.getContext('2d');if('filter' in mg2)mg2.filter='blur('+Math.max(1.5,T.rx/22)+'px)';
+    mg2.fillStyle='#000';mg2.beginPath();lp.forEach((p,i)=>{const X=mx+(p[0]-mx)*1.18,Y=my+(p[1]-my)*1.3;i?mg2.lineTo(X,Y):mg2.moveTo(X,Y)});mg2.closePath();mg2.fill();
+    const ml=mk(W,H),mlg=ml.getContext('2d');mlg.drawImage(tgtImg,0,0);mlg.globalCompositeOperation='destination-in';mlg.drawImage(mm,0,0);g.drawImage(ml,0,0);
+  }
   out._sm=sm;
   return out;
 }
@@ -724,7 +730,7 @@ $('#swGo').onclick=()=>{
       const tg=$('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T];let out=swA.img;
       for(let k=0;k<tg.length;k++){
         if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
-        out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100);
+        out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
         if(enh>0){try{out=await nnEnhance(out,tg[k],say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}
       }watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
@@ -1311,4 +1317,4 @@ document.querySelectorAll('.fhBox').forEach(b=>b.onchange=()=>{FH=b.checked;docu
 window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
-  </html>
+</html>
