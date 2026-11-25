@@ -80,6 +80,7 @@ video{width:100%;border-radius:10px;background:#000}
 <h3>٢. نفّذ</h3>
 <div class="row">
 <button class="b y" id="swGo">🔄 بدّل الوجوه</button>
+<label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
@@ -161,7 +162,7 @@ video{width:100%;border-radius:10px;background:#000}
 <div class="row"><span class="note">حجم الدايرة اليدوي</span><input type="range" id="vfPSz" min="8" max="45" value="20"><button class="b g" id="vfPClr">مسح</button></div>
 </div>
 <div class="row"><span>ستيكر يتبع الوش</span><select id="vfStk"><option value="none">بدون</option><option value="glasses">😎 نضارة</option><option value="mustache">🥸 شنب</option><option value="nose">🤡 أنف مهرج</option><option value="crown">👑 تاج</option><option value="party">🎉 طاقية حفلة</option></select></div>
-<div class="row"><span>كشف الوش</span><select id="vfFast"><option value="1">كل إطار (أدق)</option><option value="2">كل إطارين (أسرع)</option><option value="3">كل 3 إطارات (أسرع بكتير)</option></select></div>
+<div class="row"><label><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر</label><span>كشف الوش</span><select id="vfFast"><option value="1">كل إطار (أدق)</option><option value="2">كل إطارين (أسرع)</option><option value="3">كل 3 إطارات (أسرع بكتير)</option></select></div>
 <div class="row"><span>السرعة/الجودة</span><select id="vfFps"><option value="8">سريع (8 إطار/ث)</option><option value="12" selected>متوسط (12 إطار/ث)</option><option value="15">أحسن (15 إطار/ث)</option></select>
 <select id="vfSize"><option value="360">صغير 360</option><option value="480" selected>480</option><option value="640">كبير 640</option></select></div>
 </div>
@@ -222,11 +223,12 @@ const OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,3
 function toFace(p,W,H){
   const e=toEllipse(p,W,H),q=i=>[p[i].x*W,p[i].y*H];
   e.P=OVAL.map(q);e.A=[q(33),q(263),q(13)];
+  {const c=Math.cos(e.rot),sn=Math.sin(e.rot);e.vb=Math.min(...[70,63,105,66,107,336,296,334,293,300].map(i=>{const b=q(i),dx=b[0]-e.cx,dy=b[1]-e.cy;return -dx*sn+dy*c}))}
   {const ax=(p[454].x-p[234].x)*W,ay=(p[454].y-p[234].y)*H,nx=(p[1].x-p[234].x)*W,ny=(p[1].y-p[234].y)*H;e.yaw=(nx*ax+ny*ay)/Math.max(1e-6,ax*ax+ay*ay)}
   return e;
 }
 function scaleFace(f,k){
-  const g={...f,cx:f.cx*k,cy:f.cy*k,rx:f.rx*k,ry:f.ry*k};
+  const g={...f,cx:f.cx*k,cy:f.cy*k,rx:f.rx*k,ry:f.ry*k};if(f.vb!==undefined)g.vb=f.vb*k;
   if(f.P)g.P=f.P.map(a=>[a[0]*k,a[1]*k]);
   if(f.A)g.A=f.A.map(a=>[a[0]*k,a[1]*k]);
   return g;
@@ -338,6 +340,8 @@ function affine(S,T){
   const X=solve([T[0][0],T[1][0],T[2][0]]),Y=solve([T[0][1],T[1][1],T[2][1]]);
   return [X[0],Y[0],X[1],Y[1],X[2],Y[2]];
 }
+let FH=true;
+let HR=true;
 function faceLayer(src,S,T,W,H,dstForColor){
   const useP=!!(S.P&&S.A&&T.P&&T.A);
   let minx,miny,maxx,maxy;
@@ -351,28 +355,62 @@ function faceLayer(src,S,T,W,H,dstForColor){
   if(af)g.transform(af[0],af[1],af[2],af[3],af[4],af[5]);
   else{g.translate(T.cx,T.cy);g.rotate(T.rot);g.scale(T.rx/S.rx,T.ry/S.ry);g.rotate(-S.rot);g.translate(-S.cx,-S.cy)}
   g.drawImage(src,0,0);g.setTransform(1,0,0,1,0,0);
-  // mask (soft)
-  const k=0.12,mw=Math.max(2,Math.round(w*k)),mh=Math.max(2,Math.round(h*k));
+  // mask (soft): outline minus forehead/hair above the brows
+  const k=0.1,mw=Math.max(2,Math.round(w*k)),mh=Math.max(2,Math.round(h*k));
   const M=mk(mw,mh),mg=M.getContext('2d');
   mg.scale(mw/w,mh/h);mg.translate(-x0,-y0);mg.fillStyle='#000';
+  const vcut=!FH?-1e5:(T.vb!==undefined?T.vb-0.06*T.ry:-0.34*T.ry);
+  mg.save();mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.beginPath();mg.rect(-1e5,vcut,2e5,1e5);mg.clip();mg.rotate(-T.rot);mg.translate(-T.cx,-T.cy);
   mg.beginPath();
-  if(T.P){const sh=0.87;T.P.forEach((p,i)=>{const px=T.cx+(p[0]-T.cx)*sh,py=T.cy+(p[1]-T.cy)*sh;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath()}
-  else{mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.ellipse(0,0,T.rx*0.86,T.ry*0.86,0,0,7)}
-  mg.fill();
-  g.globalCompositeOperation='destination-in';g.imageSmoothingQuality='high';g.drawImage(M,0,0,w,h);g.globalCompositeOperation='source-over';
+  if(T.P){
+    const c=Math.cos(T.rot),sn=Math.sin(T.rot),sx=0.9,sy=0.96;
+    T.P.forEach((p,i)=>{const dx=p[0]-T.cx,dy=p[1]-T.cy,u=(dx*c+dy*sn)*sx,v=(-dx*sn+dy*c)*sy;const px=T.cx+u*c-v*sn,py=T.cy+u*sn+v*c;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath();
+  }else{mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.ellipse(0,0,T.rx*0.86,T.ry*0.9,0,0,7)}
+  mg.fill();mg.restore();
+  // soften the small mask a bit more
+  const M2=mk(mw,mh),m2=M2.getContext('2d');
+  if('filter' in m2){m2.filter='blur('+Math.max(0.8,Math.min(mw,mh)/26)+'px)'}
+  m2.drawImage(M,0,0);
+  g.globalCompositeOperation='destination-in';g.imageSmoothingQuality='high';g.drawImage(M2,0,0,w,h);g.globalCompositeOperation='source-over';
+  if(HR){
+    // drop dark/odd source pixels (hair, fringe, glasses frames) outside the inner face; the target's own skin shows through
+    const id=g.getImageData(0,0,w,h),d=id.data,c=Math.cos(T.rot),sn=Math.sin(T.rot),rx=T.rx||50,ry=T.ry||60;
+    let sr=0,sg=0,sb=0,n=0;
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;if(d[i+3]<200)continue;const dx=x0+x-T.cx,dy=y0+y-T.cy,u=(dx*c+dy*sn)/rx,v=(-dx*sn+dy*c)/ry;if(u*u+v*v<0.28&&v>-0.1){sr+=d[i];sg+=d[i+1];sb+=d[i+2];n++}}
+    if(n>20){sr/=n;sg/=n;sb/=n;const rl=0.3*sr+0.59*sg+0.11*sb;
+      for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;if(!d[i+3])continue;const dx=x0+x-T.cx,dy=y0+y-T.cy,u=(dx*c+dy*sn)/rx,v=(-dx*sn+dy*c)/ry,q=u*u+v*v;if(q<0.3)continue;
+        const l=0.3*d[i]+0.59*d[i+1]+0.11*d[i+2],dist=Math.abs(d[i]-sr)+Math.abs(d[i+1]-sg)+Math.abs(d[i+2]-sb);
+        const dark=Math.max(0,Math.min(1,(rl*0.7-l)/(rl*0.25+1))),off=Math.max(0,Math.min(1,(dist-rl*0.75)/(rl*0.5+1)));
+        const k2=Math.max(dark,off*0.8);if(k2>0)d[i+3]=Math.round(d[i+3]*(1-k2))}
+      // soften the alpha
+      const A=new Float32Array(w*h);for(let i=0;i<w*h;i++)A[i]=d[i*4+3];
+      const r=Math.max(1,Math.round(Math.min(w,h)/45)),B=new Float32Array(w*h);
+      for(let y=0;y<h;y++){let s=0,cnt=0;for(let x=-r;x<=r;x++)if(x>=0&&x<w){s+=A[y*w+x];cnt++}for(let x=0;x<w;x++){B[y*w+x]=s/cnt;const a=x+r+1,b=x-r;if(a<w){s+=A[y*w+a];cnt++}if(b>=0){s-=A[y*w+b];cnt--}}}
+      for(let x=0;x<w;x++){let s=0,cnt=0;for(let y=-r;y<=r;y++)if(y>=0&&y<h){s+=B[y*w+x];cnt++}for(let y=0;y<h;y++){const o=A[y*w+x]>0||true?s/cnt:0;d[(y*w+x)*4+3]=Math.min(d[(y*w+x)*4+3]>0?255:0,o)>0?Math.round(Math.min(o,A[y*w+x]+40)):0;const a=y+r+1,b=y-r;if(a<h){s+=B[a*w+x];cnt++}if(b>=0){s-=B[b*w+x];cnt--}}}
+      g.putImageData(id,0,0)}
+  }
   if(dstForColor){
+    // regional color match: spatially varying low-frequency correction (target minus source), applied to the source face
     const id=g.getImageData(0,0,w,h),d=id.data;
     const D=dstForColor.getContext('2d').getImageData(x0,y0,w,h).data;
-    let n=0,ms=[0,0,0],mt=[0,0,0],ss=[0,0,0],st=[0,0,0];
-    for(let i=0;i<d.length;i+=4){if(d[i+3]>220){n++;for(let c=0;c<3;c++){ms[c]+=d[i+c];mt[c]+=D[i+c]}}}
-    if(n>50){
-      for(let c=0;c<3;c++){ms[c]/=n;mt[c]/=n}
-      for(let i=0;i<d.length;i+=4){if(d[i+3]>220)for(let c=0;c<3;c++){ss[c]+=(d[i+c]-ms[c])**2;st[c]+=(D[i+c]-mt[c])**2}}
-      const r=[0,1,2].map(c=>Math.max(0.75,Math.min(1.3,Math.sqrt(st[c]/Math.max(1,ss[c])))));
-      const kk=0.9;
-      for(let i=0;i<d.length;i+=4){if(d[i+3]){for(let c=0;c<3;c++){const v=(d[i+c]-ms[c])*(1+(r[c]-1)*kk)+ms[c]+(mt[c]-ms[c])*kk;d[i+c]=v<0?0:v>255?255:v}}}
-      g.putImageData(id,0,0);
+    const f=Math.max(3,Math.round(Math.min(w,h)/14)),sw=Math.ceil(w/f),sh=Math.ceil(h/f);
+    const acc=new Float32Array(sw*sh*4);
+    for(let y=0;y<h;y++){const row=((y/f)|0)*sw;for(let x=0;x<w;x++){const i=(y*w+x)*4,al=d[i+3];if(al>8){const a=al/255,c=(row+((x/f)|0))*4;acc[c]+=(D[i]-d[i])*a;acc[c+1]+=(D[i+1]-d[i+1])*a;acc[c+2]+=(D[i+2]-d[i+2])*a;acc[c+3]+=a}}}
+    const alpha=0.92;
+    for(let y=0;y<h;y++){
+      const fy=y/f-0.5,j0=Math.floor(fy),wy=fy-j0;
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;if(!d[i+3])continue;
+        const fx=x/f-0.5,i0=Math.floor(fx),wx=fx-i0;
+        let r=0,gg=0,b=0,ws=0;
+        for(let jj=0;jj<2;jj++){const j=j0+jj;if(j<0||j>=sh)continue;for(let ii=0;ii<2;ii++){const ci=i0+ii;if(ci<0||ci>=sw)continue;
+          const c=(j*sw+ci)*4,cw=acc[c+3];if(cw<=0.3)continue;
+          const wgt=(ii?wx:1-wx)*(jj?wy:1-wy)*Math.min(1,cw/4);
+          r+=acc[c]/cw*wgt;gg+=acc[c+1]/cw*wgt;b+=acc[c+2]/cw*wgt;ws+=wgt}}
+        if(ws>0){r/=ws;gg/=ws;b/=ws;let v=d[i]+r*alpha;d[i]=v<0?0:v>255?255:v;v=d[i+1]+gg*alpha;d[i+1]=v<0?0:v>255?255:v;v=d[i+2]+b*alpha;d[i+2]=v<0?0:v>255?255:v}
+      }
     }
+    g.putImageData(id,0,0);
   }
   return{c:L,x:x0,y:y0};
 }
@@ -837,7 +875,7 @@ function trackStep(tracks,cur,K){
     cur.forEach((f,i)=>{if(used.has(i))return;const d=Math.hypot(f.cx-t.cx,f.cy-t.cy);if(d<bd){bd=d;bi=i}});
     if(bi>=0&&bd<Math.max(t.rx,t.ry)*2.5){
       used.add(bi);const f=cur[bi],k=0.65,m=(a,b)=>a+(b-a)*k;
-      const o={cx:m(t.cx,f.cx),cy:m(t.cy,f.cy),rx:m(t.rx,f.rx),ry:m(t.ry,f.ry),rot:m(t.rot,f.rot),miss:0,yaw:f.yaw};
+      const o={cx:m(t.cx,f.cx),cy:m(t.cy,f.cy),rx:m(t.rx,f.rx),ry:m(t.ry,f.ry),rot:m(t.rot,f.rot),miss:0,yaw:f.yaw,vb:(f.vb!==undefined&&t.vb!==undefined)?m(t.vb,f.vb):f.vb};
       if(f.P&&t.P&&f.A&&t.A){o.P=f.P.map((p,i)=>[m(t.P[i][0],p[0]),m(t.P[i][1],p[1])]);o.A=f.A.map((p,i)=>[m(t.A[i][0],p[0]),m(t.A[i][1],p[1])])}else{o.P=f.P;o.A=f.A}
       return o;
     }
@@ -967,7 +1005,8 @@ $('#vfGo').onclick=()=>vfRun(15);
 $('#vfPrev3').onclick=()=>vfRun(3);
 $('#vfStop').onclick=()=>{vf.cancel=true;$('#vfSt').textContent='اتلغى.'};
 
-window.__dbg={vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
+document.querySelectorAll('.fhBox').forEach(b=>b.onchange=()=>{FH=b.checked;document.querySelectorAll('.fhBox').forEach(x=>x.checked=FH)});
+window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
 </html>
