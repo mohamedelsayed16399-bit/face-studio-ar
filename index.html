@@ -540,8 +540,14 @@ async function nnLoad(say){
   if(pos<0)throw new Error('emap not found');
   const emap=new Float32Array(swB.buffer.slice(swB.byteOffset+pos,swB.byteOffset+pos+1048576));
   say('بجهّز نموذج التبديل...');
-  const sw=await ort.InferenceSession.create(swB,NN_SO);swB=null;
-  nnS={sw,emap};return nnS;
+  let sw=null,gpu=false;
+  try{ // WebGPU only if the device exposes shader-f16; any failure falls back to WASM
+    const ad=navigator.gpu&&await navigator.gpu.requestAdapter();
+    if(ad&&ad.features.has('shader-f16')){sw=await ort.InferenceSession.create(swB,{executionProviders:['webgpu'],graphOptimizationLevel:'disabled'});gpu=true}
+  }catch(e){sw=null;gpu=false}
+  if(!sw)sw=await ort.InferenceSession.create(swB,NN_SO);
+  swB=null;
+  nnS={sw,emap,gpu};return nnS;
 }
 async function nnEmbed(cs,say){ // ArcFace is loaded only for this step and released right after, to keep memory low
   const key=cs.getContext('2d').getImageData(0,0,112,112).data.join(',').length+':'+cs.toDataURL().slice(-64);
