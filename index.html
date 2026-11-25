@@ -79,6 +79,8 @@ video{width:100%;border-radius:10px;background:#000}
 <div class="card">
 <h3>٢. نفّذ</h3>
 <div class="row" id="swMtRow" style="display:none"><span class="note">وش الصورة الأولى</span><input type="range" id="swMt" min="0" max="100" value="50"><span class="note">وش الصورة التانية</span></div>
+<div class="row" id="swMRow2" style="display:none"><label class="note"><input type="checkbox" id="swMFace" checked> الوش بس (من غير ما الشعر والخلفية يتداخلوا)</label><button class="b y" id="swMVid">🎞️ اعمل فيديو مورف</button><a class="b g" id="swMDl" style="display:none">💾 حمّل الفيديو</a></div>
+<video id="swMVideo" controls playsinline style="display:none;max-width:100%;border-radius:12px;margin:8px 0"></video>
 <div class="row">
 <button class="b y" id="swGo">🔄 بدّل الوجوه</button>
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
@@ -475,13 +477,14 @@ function skinStats(img,F){
   for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){const dx=x0+x-F.cx,dy=y0+y-F.cy,u=(dx*co+dy*sn)/F.rx,v=(-dx*sn+dy*co)/F.ry;if(u*u+v*v>0.6||v<-0.1)continue;const o=(y*w+x)*4,l=0.3*d[o]+0.59*d[o+1]+0.11*d[o+2];n++;s1+=l;s2+=l*l}
   if(n<20)return null;const m=s1/n;return{m,sd:Math.sqrt(Math.max(0,s2/n-m*m))};
 }
-function gateFit(S,T,sImg,tImg){
+function gateFit(S,T,sImg,tImg,morph){
   const msgs=[];let lv=0;
   if(S.yaw===undefined||T.yaw===undefined)return{lv:0,msgs};
   const dy=Math.abs(S.yaw-T.yaw),de=Math.abs((S.eo||0)-(T.eo||0)),ds=Math.abs((S.fw||1)/(T.fw||1)-1),dm=Math.abs((S.mo||0)-(T.mo||0));
   if(dy>0.30){lv=2;msgs.push('زاوية الراس مختلفة جدًا بين الوشّين')}else if(dy>0.18){lv=Math.max(lv,1);msgs.push('زاوية الراس مختلفة شوية')}
   if(ds>0.28){lv=2;msgs.push('شكل الوشّين مختلف جدًا (عريض/طويل)')}else if(ds>0.16){lv=Math.max(lv,1);msgs.push('شكل الوشّين مختلف')}
-  if(sImg&&tImg){const a=skinStats(sImg,S),b=skinStats(tImg,T);if(a&&b){window.__ss=[a,b];
+  if(morph&&dm>0.2){lv=2;msgs.push('الفم مفتوح في واحد بس')}
+  if(!morph&&sImg&&tImg){const a=skinStats(sImg,S),b=skinStats(tImg,T);if(a&&b){window.__ss=[a,b];
     const lr=Math.max(a.m,b.m)/Math.max(1,Math.min(a.m,b.m)),cr=Math.max(a.sd,b.sd)/Math.max(1,Math.min(a.sd,b.sd));
     if(lr>1.5||cr>1.65){lv=2;msgs.push('الإضاءة مختلفة جدًا (واحد غامق أو فيه ظل قوي)')}else if(lr>1.3||cr>1.4){lv=Math.max(lv,1);msgs.push('الإضاءة مختلفة')}}}
   if(de>0.2){lv=Math.max(lv,1);msgs.push('العين مفتوحة في واحد ومقفولة في التاني')}
@@ -504,43 +507,99 @@ $('#swMode').onchange=()=>{
   $('#swBCard').style.display=two?'':'none';
   $('#swATitle').textContent=md==='morph'?'الصورة الأولى':two?'الصورة الأساسية (اللي هتتغير)':'الصورة';
   $('#swShuf').style.display=two?'none':'';
-  $('#swMtRow').style.display=md==='morph'?'':'none';
+  $('#swMtRow').style.display=md==='morph'?'':'none';$('#swMRow2').style.display=md==='morph'?'':'none';
   $('#swGo').textContent=md==='morph'?'🧬 اعمل المورف':'🔄 بدّل الوجوه';
 };
 function showResult(cv){
   swResult=cv;const o=$('#swOut');o.width=cv.width;o.height=cv.height;o.getContext('2d').drawImage(cv,0,0);
   ['#swDl','#swShare','#swToVid'].forEach(s=>$(s).disabled=false);
 }
-function morphRender(t){
+let morphP=null,morphKey=null;
+function morphPrep(){
   const A=swA.pick(),B=swB.pick();
-  if(!A||!B||!A.W||!B.W||!A.P||!B.P)return false;
-  const k=Math.min(1,720/Math.max(swA.img.width,swA.img.height)),Wd=Math.round(swA.img.width*k),Hd=Math.round(swA.img.height*k);
+  if(!A||!B||!A.W||!B.W||!A.P||!B.P)return null;
+  const key=[swA.img,swB.img,A,B];
+  if(morphP&&morphKey&&key.every((x,i)=>x===morphKey[i]))return morphP;
+  const k=Math.min(1,640/Math.max(swA.img.width,swA.img.height)),Wd=Math.round(swA.img.width*k),Hd=Math.round(swA.img.height*k);
   const sa=[k,k],sb=[Wd/swB.img.width,Hd/swB.img.height];
   const tf=(f,sc)=>f.P.concat(f.W.slice(0,NI)).map(p=>[p[0]*sc[0],p[1]*sc[1]]);
   const an=[[0,0],[Wd/2,0],[Wd,0],[0,Hd/2],[Wd,Hd/2],[0,Hd],[Wd/2,Hd],[Wd,Hd],[Wd*0.25,0],[Wd*0.75,0],[Wd*0.25,Hd],[Wd*0.75,Hd],[0,Hd*0.25],[0,Hd*0.75],[Wd,Hd*0.25],[Wd,Hd*0.75]];
-  const pa=tf(A,sa).concat(an),pb=tf(B,sb).concat(an);
-  const pm=pa.map((p,i)=>[p[0]*(1-t)+pb[i][0]*t,p[1]*(1-t)+pb[i][1]*t]);
-  const tris=delaunay(pa.map((p,i)=>[(p[0]+pb[i][0])/2,(p[1]+pb[i][1])/2]));
-  const draw=(img,ps,sx,sy)=>{
-    const c=mk(Wd,Hd),g=c.getContext('2d');g.drawImage(img,0,0,Wd,Hd);
-    for(const [a,b,cc] of tris){
-      const tt=[pm[a],pm[b],pm[cc]],ss=[ps[a],ps[b],ps[cc]],f=affine(ss,tt);if(!f)continue;
+  const pa=tf(A,sa).concat(an),pb=tf(B,sb).concat(an),NP=A.P.length;
+  // fit B's face to A's size and position (eyes + mouth), so the head doesn't grow or shrink during the morph
+  const afm=affine(B.A.map(p=>[p[0]*sb[0],p[1]*sb[1]]),A.A.map(p=>[p[0]*sa[0],p[1]*sa[1]]));
+  const pbt=pb.map((p,i)=>i<pb.length-an.length&&afm?[afm[0]*p[0]+afm[2]*p[1]+afm[4],afm[1]*p[0]+afm[3]*p[1]+afm[5]]:p);
+  const tris=delaunay(pa.map((p,i)=>[(p[0]+pbt[i][0])/2,(p[1]+pbt[i][1])/2]));
+  const cA=mk(Wd,Hd),cB=mk(Wd,Hd),bl=mk(Wd,Hd),out=mk(Wd,Hd),mc=mk(Wd,Hd);
+  const ga=cA.getContext('2d',{willReadFrequently:true}),gb=cB.getContext('2d'),gl=bl.getContext('2d',{willReadFrequently:true}),go=out.getContext('2d',{willReadFrequently:true}),gm=mc.getContext('2d',{willReadFrequently:true});
+  const warp=(g,img,ps,pm)=>{
+    g.clearRect(0,0,Wd,Hd);g.drawImage(img,0,0,Wd,Hd);
+    for(const [a,b,c] of tris){
+      const tt=[pm[a],pm[b],pm[c]],ss=[ps[a],ps[b],ps[c]],f=affine(ss,tt);if(!f)continue;
       const cx=(tt[0][0]+tt[1][0]+tt[2][0])/3,cy=(tt[0][1]+tt[1][1]+tt[2][1])/3;
       g.save();g.beginPath();tt.forEach((p,i)=>{const dx=p[0]-cx,dy=p[1]-cy,l=Math.hypot(dx,dy)||1,e=(l+0.8)/l;const X=cx+dx*e,Y=cy+dy*e;i?g.lineTo(X,Y):g.moveTo(X,Y)});
       g.closePath();g.clip();g.transform(f[0],f[1],f[2],f[3],f[4],f[5]);g.drawImage(img,0,0,Wd,Hd);g.restore();
     }
-    return c;
   };
-  const ca=draw(swA.img,pa),cb=draw(swB.img,pb);
-  const out=mk(Wd,Hd),g=out.getContext('2d');g.drawImage(ca,0,0);g.globalAlpha=t;g.drawImage(cb,0,0);g.globalAlpha=1;
-  watermark(out);showResult(out);return true;
+  const render=(t,faceOnly)=>{
+    const pm=pa.map((p,i)=>[p[0]*(1-t)+pbt[i][0]*t,p[1]*(1-t)+pbt[i][1]*t]);
+    warp(ga,swA.img,pa,pm);
+    if(!faceOnly){warp(gb,swB.img,pb,pm);gl.globalAlpha=1;gl.drawImage(cA,0,0);gl.globalAlpha=t;gl.drawImage(cB,0,0);gl.globalAlpha=1;go.drawImage(bl,0,0)}
+    else{warp(gb,swB.img,pb,pm);gl.globalAlpha=1;gl.drawImage(cA,0,0);gl.globalAlpha=t;gl.drawImage(cB,0,0);gl.globalAlpha=1;
+      // face-only: keep A's head/background, put the blended face on it, matching A's skin tone
+      const poly=pm.slice(0,NP);let cx=0,cy=0;poly.forEach(p=>{cx+=p[0];cy+=p[1]});cx/=NP;cy/=NP;
+      const bys=[13,14,15,16,17,18].map(i=>pm[NP+i][1]),top=Math.min(...bys),fh=Math.max(...poly.map(p=>p[1]))-Math.min(...poly.map(p=>p[1]));
+      const cut=top+0.03*fh;
+      gm.clearRect(0,0,Wd,Hd);gm.save();gm.beginPath();gm.rect(0,cut,Wd,Hd);gm.clip();gm.fillStyle='#000';gm.beginPath();
+      poly.forEach((p,i)=>{const X=cx+(p[0]-cx)*0.9,Y=cy+(p[1]-cy)*0.95;i?gm.lineTo(X,Y):gm.moveTo(X,Y)});gm.closePath();gm.fill();gm.restore();
+      let x0=Math.max(0,Math.floor(Math.min(...poly.map(p=>p[0]))-12)),x1=Math.min(Wd,Math.ceil(Math.max(...poly.map(p=>p[0]))+12)),y0=Math.max(0,Math.floor(cut-12)),y1=Math.min(Hd,Math.ceil(Math.max(...poly.map(p=>p[1]))+12));
+      const w=x1-x0,h=y1-y0;
+      const sm=mk(w,h),sg=sm.getContext('2d');if('filter' in sg)sg.filter='blur('+Math.max(1.5,Wd/110)+'px)';sg.drawImage(mc,x0,y0,w,h,0,0,w,h);
+      const M=sg.getImageData(0,0,w,h).data,Ad=ga.getImageData(x0,y0,w,h),Bd=gl.getImageData(x0,y0,w,h),a=Ad.data,b=Bd.data;
+      let sa2=[0,0,0],sb2=[0,0,0],n=0;
+      for(let i=0;i<w*h;i++){const m=M[i*4+3];if(m>200){for(let q=0;q<3;q++){sa2[q]+=a[i*4+q];sb2[q]+=b[i*4+q]}n++}}
+      if(n>20)for(let q=0;q<3;q++){sa2[q]=(sa2[q]-sb2[q])/n}else sa2=[0,0,0];
+      for(let i=0;i<w*h;i++){const m=M[i*4+3]/255;if(!m)continue;for(let q=0;q<3;q++){const v=b[i*4+q]+sa2[q];a[i*4+q]=a[i*4+q]*(1-m)+(v<0?0:v>255?255:v)*m}}
+      go.drawImage(cA,0,0);go.putImageData(Ad,x0,y0);
+    }
+    watermark(out);return out;
+  };
+  morphKey=key;morphP={W:Wd,H:Hd,render};return morphP;
 }
-$('#swMt').oninput=()=>{if($('#swMode').value==='morph'&&swResult)morphRender($('#swMt').value/100)};
+function morphRender(t){
+  const P=morphPrep();if(!P)return false;
+  const gt=gateFit(swB.pick(),swA.pick(),null,null,true);
+  if(gt.lv>=2){$('#swSt').textContent='⚠️ المورف مش هيطلع حلو: '+gt.msgs.filter(x=>!/فسبت/.test(x)).join('، ')+'. جرّب صور بنفس الزاوية والتعبير.';return 'blocked'}
+  const c=P.render(t,$('#swMFace').checked);showResult(c);return true;
+}
+$('#swMVid').onclick=async()=>{
+  if(!swA.img||!swB.img){$('#swSt').textContent='اختار الصورتين الأول';return}
+  const P=morphPrep();if(!P){$('#swSt').textContent='محتاج وش في كل صورة (دوس على الوش بإيدك لو ما اتلقاش)';return}
+  {const gt=gateFit(swB.pick(),swA.pick(),null,null,true);if(gt.lv>=2){$('#swSt').textContent='⚠️ فيديو المورف مش هيطلع حلو: '+gt.msgs.filter(x=>!/فسبت/.test(x)).join('، ')+'. جرّب صور بنفس الزاوية والتعبير.';return}}
+  const types=['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+  const mt=types.find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t));
+  if(!mt){$('#swSt').textContent='المتصفح ده مش بيدعم تسجيل الفيديو';return}
+  const cv=mk(P.W,P.H),g=cv.getContext('2d'),face=$('#swMFace').checked;g.drawImage(P.render(0,face),0,0);
+  const rec=new MediaRecorder(cv.captureStream(30),{mimeType:mt,videoBitsPerSecond:3e6}),chunks=[];
+  rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const done=new Promise(r=>rec.onstop=r);rec.start(300);
+  const dur=4200,t0=performance.now();
+  await new Promise(res=>{const loop=()=>{
+    const e=(performance.now()-t0)/dur;if(e>=1){res();return}
+    let x=Math.min(1,Math.max(0,(e-0.12)/0.76));x=x*x*(3-2*x);
+    g.drawImage(P.render(x,face),0,0);$('#swSt').textContent='بيتسجّل فيديو المورف... '+Math.round(e*100)+'%';requestAnimationFrame(loop)};loop()});
+  rec.stop();await done;
+  const blob=new Blob(chunks,{type:mt.split(';')[0]}),url=URL.createObjectURL(blob),v=$('#swMVideo');
+  v.src=url;v.style.display='';$('#swMDl').href=url;$('#swMDl').download='morph.'+(mt.includes('mp4')?'mp4':'webm');$('#swMDl').style.display='';
+  $('#swSt').textContent='✅ فيديو المورف جاهز ('+(blob.size/1048576).toFixed(1)+' ميجا)';
+};
+$('#swMt').oninput=()=>{if($('#swMode').value==='morph'&&swResult&&morphRender===morphRender)morphRender($('#swMt').value/100)};
+$('#swMFace').onchange=()=>{if($('#swMode').value==='morph'&&swResult)morphRender($('#swMt').value/100)};
 $('#swGo').onclick=()=>{
   if(!swA.img){$('#swSt').textContent='اختار الصورة الأول';return}
   if($('#swMode').value==='morph'){
     if(!swB.img){$('#swSt').textContent='اختار الصورة التانية';return}
-    if(!morphRender($('#swMt').value/100))$('#swSt').textContent='محتاج وش في كل صورة (دوس على الوش بإيدك لو ما اتلقاش)';
+    const mr=morphRender($('#swMt').value/100);
+    if(mr==='blocked'){}else if(!mr)$('#swSt').textContent='محتاج وش في كل صورة (دوس على الوش بإيدك لو ما اتلقاش)';
     else $('#swSt').textContent='تمّ ✅ حرّك السلايدر عشان تغيّر النسبة';
     return;
   }
