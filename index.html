@@ -57,7 +57,7 @@ video{width:100%;border-radius:10px;background:#000}
 <div class="card">
 <h3>١. اختار الطريقة</h3>
 <div class="row">
-<select id="swMode"><option value="one">صورة واحدة فيها وشّين أو أكتر (بدّلهم)</option><option value="two">صورتين (حط وش صورة على صورة تانية)</option></select>
+<select id="swMode"><option value="one">صورة واحدة فيها وشّين أو أكتر (بدّلهم)</option><option value="two">صورتين (حط وش صورة على صورة تانية)</option><option value="morph">🧬 مورف: دمج وشّين بسلايدر (دايمًا شكله حلو)</option></select>
 </div>
 </div>
 <div class="card">
@@ -78,6 +78,7 @@ video{width:100%;border-radius:10px;background:#000}
 </div>
 <div class="card">
 <h3>٢. نفّذ</h3>
+<div class="row" id="swMtRow" style="display:none"><span class="note">وش الصورة الأولى</span><input type="range" id="swMt" min="0" max="100" value="50"><span class="note">وش الصورة التانية</span></div>
 <div class="row">
 <button class="b y" id="swGo">🔄 بدّل الوجوه</button>
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
@@ -219,11 +220,12 @@ function toEllipse(p,W,H){
     rx:Math.hypot(l.x-r.x,l.y-r.y)/2*0.95,ry:Math.hypot(top.x-ch.x,top.y-ch.y)/2*0.98,
     rot:Math.atan2(e2.y-e1.y,e2.x-e1.x)};
 }
-const INNER=[33,133,159,145,362,263,386,374,1,168,2,61,291,0,17,152,70,105,107,334,336,300,205,425,13,199];
+const INNER=[33,133,159,145,362,263,386,374,1,168,2,61,291,70,105,107,334,336,300,205,425];
+const NI=INNER.length,LIPS=[61,185,40,39,37,0,267,269,270,409,291,375,321,405,314,17,84,181,91,146];
 const OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
 function toFace(p,W,H){
   const e=toEllipse(p,W,H),q=i=>[p[i].x*W,p[i].y*H];
-  e.P=OVAL.map(q);e.A=[q(33),q(263),q(13)];e.W=INNER.map(q);
+  e.P=OVAL.map(q);e.A=[q(33),q(263),q(13)];e.W=INNER.concat(LIPS).map(q);{const d=(a,b)=>{const A=q(a),B=q(b);return Math.hypot(A[0]-B[0],A[1]-B[1])};e.mo=d(13,14)/Math.max(1e-6,d(61,291));e.eo=(d(159,145)+d(386,374))/2/Math.max(1e-6,(d(33,133)+d(362,263))/2);e.fw=d(234,454)/Math.max(1e-6,d(10,152))}
   {const c=Math.cos(e.rot),sn=Math.sin(e.rot);e.vb=Math.min(...[70,63,105,66,107,336,296,334,293,300].map(i=>{const b=q(i),dx=b[0]-e.cx,dy=b[1]-e.cy;return -dx*sn+dy*c}))}
   {const ax=(p[454].x-p[234].x)*W,ay=(p[454].y-p[234].y)*H,nx=(p[1].x-p[234].x)*W,ny=(p[1].y-p[234].y)*H;e.yaw=(nx*ax+ny*ay)/Math.max(1e-6,ax*ax+ay*ay)}
   return e;
@@ -342,7 +344,7 @@ function affine(S,T){
   return [X[0],Y[0],X[1],Y[1],X[2],Y[2]];
 }
 let FH=true;
-let HR=true;
+let HR=true,MK=true;
 function delaunay(pts){
   const n=pts.length;let a0=1e9,b0=1e9,a1=-1e9,b1=-1e9;
   for(const p of pts){a0=Math.min(a0,p[0]);b0=Math.min(b0,p[1]);a1=Math.max(a1,p[0]);b1=Math.max(b1,p[1])}
@@ -365,6 +367,7 @@ function delaunay(pts){
 }
 function faceLayer(src,S,T,W,H,dstForColor){
   const useW=!!(S.P&&S.W&&T.P&&T.W);
+  const keepMouth=useW&&MK&&S.mo!==undefined&&T.mo!==undefined&&Math.abs(S.mo-T.mo)>0.10;
   const useP=!!(S.P&&S.A&&T.P&&T.A);
   let minx,miny,maxx,maxy;
   if(T.P){minx=Math.min(...T.P.map(p=>p[0]));maxx=Math.max(...T.P.map(p=>p[0]));miny=Math.min(...T.P.map(p=>p[1]));maxy=Math.max(...T.P.map(p=>p[1]))}
@@ -380,7 +383,7 @@ function faceLayer(src,S,T,W,H,dstForColor){
   g.drawImage(src,0,0);g.restore();
   if(useW&&af){
     // piecewise-affine warp over ~60 landmarks: eyes, brows, nose, mouth and jaw land exactly on the target's
-    const tp=T.P.concat(T.W),sp=S.P.concat(S.W);
+    const iw=[];for(let i=0;i<NI;i++)if(!(keepMouth&&(i===11||i===12)))iw.push(i);const tp=T.P.concat(iw.map(i=>T.W[i])),sp=S.P.concat(iw.map(i=>S.W[i]));
     const tris=delaunay(tp);
     for(const [a,b,c] of tris){
       const tt=[tp[a],tp[b],tp[c]],ss=[sp[a],sp[b],sp[c]],f=affine(ss,tt);if(!f)continue;
@@ -403,6 +406,7 @@ function faceLayer(src,S,T,W,H,dstForColor){
     T.P.forEach((p,i)=>{const dx=p[0]-T.cx,dy=p[1]-T.cy,u=(dx*c+dy*sn)*sx,v=(-dx*sn+dy*c)*sy;const px=T.cx+u*c-v*sn,py=T.cy+u*sn+v*c;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath();
   }else{mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.ellipse(0,0,T.rx*0.86,T.ry*0.9,0,0,7)}
   mg.fill();mg.restore();
+  if(keepMouth){const lp=T.W.slice(NI),cx=lp.reduce((a,p)=>a+p[0],0)/lp.length,cy=lp.reduce((a,p)=>a+p[1],0)/lp.length;mg.save();mg.globalCompositeOperation='destination-out';mg.beginPath();lp.forEach((p,i)=>{const X=cx+(p[0]-cx)*1.45,Y=cy+(p[1]-cy)*1.6;i?mg.lineTo(X,Y):mg.moveTo(X,Y)});mg.closePath();mg.fill();mg.restore()}
   const M2=mk(mw,mh),m2=M2.getContext('2d');
   if('filter' in m2){m2.filter='blur('+Math.max(0.8,Math.min(mw,mh)/26)+'px)'}
   m2.drawImage(M,0,0);
@@ -463,6 +467,27 @@ function faceLayer(src,S,T,W,H,dstForColor){
   g.putImageData(id,0,0);
   return{c:L,x:x0,y:y0};
 }
+function skinStats(img,F){
+  const c=mk(img.width,img.height),g=c.getContext('2d',{willReadFrequently:true});g.drawImage(img,0,0);
+  const R=Math.max(F.rx,F.ry)*1.2,x0=Math.max(0,Math.floor(F.cx-R)),y0=Math.max(0,Math.floor(F.cy-R)),w=Math.min(img.width-x0,Math.ceil(2*R)),h=Math.min(img.height-y0,Math.ceil(2*R));
+  if(w<4||h<4)return null;
+  const d=g.getImageData(x0,y0,w,h).data,co=Math.cos(F.rot),sn=Math.sin(F.rot);let n=0,s1=0,s2=0;
+  for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){const dx=x0+x-F.cx,dy=y0+y-F.cy,u=(dx*co+dy*sn)/F.rx,v=(-dx*sn+dy*co)/F.ry;if(u*u+v*v>0.6||v<-0.1)continue;const o=(y*w+x)*4,l=0.3*d[o]+0.59*d[o+1]+0.11*d[o+2];n++;s1+=l;s2+=l*l}
+  if(n<20)return null;const m=s1/n;return{m,sd:Math.sqrt(Math.max(0,s2/n-m*m))};
+}
+function gateFit(S,T,sImg,tImg){
+  const msgs=[];let lv=0;
+  if(S.yaw===undefined||T.yaw===undefined)return{lv:0,msgs};
+  const dy=Math.abs(S.yaw-T.yaw),de=Math.abs((S.eo||0)-(T.eo||0)),ds=Math.abs((S.fw||1)/(T.fw||1)-1),dm=Math.abs((S.mo||0)-(T.mo||0));
+  if(dy>0.30){lv=2;msgs.push('زاوية الراس مختلفة جدًا بين الوشّين')}else if(dy>0.18){lv=Math.max(lv,1);msgs.push('زاوية الراس مختلفة شوية')}
+  if(ds>0.28){lv=2;msgs.push('شكل الوشّين مختلف جدًا (عريض/طويل)')}else if(ds>0.16){lv=Math.max(lv,1);msgs.push('شكل الوشّين مختلف')}
+  if(sImg&&tImg){const a=skinStats(sImg,S),b=skinStats(tImg,T);if(a&&b){window.__ss=[a,b];
+    const lr=Math.max(a.m,b.m)/Math.max(1,Math.min(a.m,b.m)),cr=Math.max(a.sd,b.sd)/Math.max(1,Math.min(a.sd,b.sd));
+    if(lr>1.5||cr>1.65){lv=2;msgs.push('الإضاءة مختلفة جدًا (واحد غامق أو فيه ظل قوي)')}else if(lr>1.3||cr>1.4){lv=Math.max(lv,1);msgs.push('الإضاءة مختلفة')}}}
+  if(de>0.2){lv=Math.max(lv,1);msgs.push('العين مفتوحة في واحد ومقفولة في التاني')}
+  if(dm>0.10)msgs.push('الفم مفتوح في واحد بس، فسبت الفم الأصلي زي ما هو');
+  return{lv,msgs};
+}
 function putLayer(g,L){g.drawImage(L.c,L.x,L.y)}
 function watermark(cv){
   const g=cv.getContext('2d');const fs=Math.max(11,Math.round(Math.min(cv.width,cv.height*1.6)/38));
@@ -475,24 +500,60 @@ const swA=new Slot($('#swACv'),$('#swAFile'),$('#swADet'),$('#swAClr'),$('#swASz
 const swB=new Slot($('#swBCv'),$('#swBFile'),$('#swBDet'),$('#swBClr'),$('#swBSz'),$('#swBSt'));
 let swResult=null;
 $('#swMode').onchange=()=>{
-  const two=$('#swMode').value==='two';
+  const md=$('#swMode').value,two=md==='two'||md==='morph';
   $('#swBCard').style.display=two?'':'none';
-  $('#swATitle').textContent=two?'الصورة الأساسية (اللي هتتغير)':'الصورة';
+  $('#swATitle').textContent=md==='morph'?'الصورة الأولى':two?'الصورة الأساسية (اللي هتتغير)':'الصورة';
   $('#swShuf').style.display=two?'none':'';
+  $('#swMtRow').style.display=md==='morph'?'':'none';
+  $('#swGo').textContent=md==='morph'?'🧬 اعمل المورف':'🔄 بدّل الوجوه';
 };
 function showResult(cv){
   swResult=cv;const o=$('#swOut');o.width=cv.width;o.height=cv.height;o.getContext('2d').drawImage(cv,0,0);
   ['#swDl','#swShare','#swToVid'].forEach(s=>$(s).disabled=false);
 }
+function morphRender(t){
+  const A=swA.pick(),B=swB.pick();
+  if(!A||!B||!A.W||!B.W||!A.P||!B.P)return false;
+  const k=Math.min(1,720/Math.max(swA.img.width,swA.img.height)),Wd=Math.round(swA.img.width*k),Hd=Math.round(swA.img.height*k);
+  const sa=[k,k],sb=[Wd/swB.img.width,Hd/swB.img.height];
+  const tf=(f,sc)=>f.P.concat(f.W.slice(0,NI)).map(p=>[p[0]*sc[0],p[1]*sc[1]]);
+  const an=[[0,0],[Wd/2,0],[Wd,0],[0,Hd/2],[Wd,Hd/2],[0,Hd],[Wd/2,Hd],[Wd,Hd],[Wd*0.25,0],[Wd*0.75,0],[Wd*0.25,Hd],[Wd*0.75,Hd],[0,Hd*0.25],[0,Hd*0.75],[Wd,Hd*0.25],[Wd,Hd*0.75]];
+  const pa=tf(A,sa).concat(an),pb=tf(B,sb).concat(an);
+  const pm=pa.map((p,i)=>[p[0]*(1-t)+pb[i][0]*t,p[1]*(1-t)+pb[i][1]*t]);
+  const tris=delaunay(pa.map((p,i)=>[(p[0]+pb[i][0])/2,(p[1]+pb[i][1])/2]));
+  const draw=(img,ps,sx,sy)=>{
+    const c=mk(Wd,Hd),g=c.getContext('2d');g.drawImage(img,0,0,Wd,Hd);
+    for(const [a,b,cc] of tris){
+      const tt=[pm[a],pm[b],pm[cc]],ss=[ps[a],ps[b],ps[cc]],f=affine(ss,tt);if(!f)continue;
+      const cx=(tt[0][0]+tt[1][0]+tt[2][0])/3,cy=(tt[0][1]+tt[1][1]+tt[2][1])/3;
+      g.save();g.beginPath();tt.forEach((p,i)=>{const dx=p[0]-cx,dy=p[1]-cy,l=Math.hypot(dx,dy)||1,e=(l+0.8)/l;const X=cx+dx*e,Y=cy+dy*e;i?g.lineTo(X,Y):g.moveTo(X,Y)});
+      g.closePath();g.clip();g.transform(f[0],f[1],f[2],f[3],f[4],f[5]);g.drawImage(img,0,0,Wd,Hd);g.restore();
+    }
+    return c;
+  };
+  const ca=draw(swA.img,pa),cb=draw(swB.img,pb);
+  const out=mk(Wd,Hd),g=out.getContext('2d');g.drawImage(ca,0,0);g.globalAlpha=t;g.drawImage(cb,0,0);g.globalAlpha=1;
+  watermark(out);showResult(out);return true;
+}
+$('#swMt').oninput=()=>{if($('#swMode').value==='morph'&&swResult)morphRender($('#swMt').value/100)};
 $('#swGo').onclick=()=>{
   if(!swA.img){$('#swSt').textContent='اختار الصورة الأول';return}
+  if($('#swMode').value==='morph'){
+    if(!swB.img){$('#swSt').textContent='اختار الصورة التانية';return}
+    if(!morphRender($('#swMt').value/100))$('#swSt').textContent='محتاج وش في كل صورة (دوس على الوش بإيدك لو ما اتلقاش)';
+    else $('#swSt').textContent='تمّ ✅ حرّك السلايدر عشان تغيّر النسبة';
+    return;
+  }
   const two=$('#swMode').value==='two';
   const out=mk(swA.img.width,swA.img.height),g=out.getContext('2d');g.drawImage(swA.img,0,0);
   if(two){
     if(!swB.img){$('#swSt').textContent='اختار الصورة التانية';return}
     const T=swA.pick(),S=swB.pick();
     if(!T||!S){$('#swSt').textContent='محتاج وش في كل صورة (دوس على الوش بإيدك لو ما اتلقاش)';return}
+    const gt=gateFit(S,T,swB.img,swA.img);
+    if(gt.lv>=2){$('#swSt').textContent='⚠️ مش هبدّل: '+gt.msgs.filter(x=>!/الفم/.test(x)).join('، ')+'. النتيجة هتطلع مش حلوة. جرّب صور بنفس الزاوية والشكل، أو استخدم وضع المورف 🧬.';return}
     putLayer(g,faceLayer(swB.img,S,T,out.width,out.height,swA.img));
+    if(gt.msgs.length){watermark(out);showResult(out);$('#swSt').textContent='تمّ، بس ⚠️ '+gt.msgs.join('، ');return}
   }else{
     let ids=swA.sel.length===2?swA.sel:(swA.faces.length>=2?[0,1]:null);
     if(!ids){$('#swSt').textContent='محتاج وشّين على الأقل. دوس على وشّين.';return}
