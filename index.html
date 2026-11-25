@@ -516,7 +516,7 @@ function showResult(cv){
 }
 /* ---------- تبديل بنموذج AI (inswapper_128 + ArcFace عبر onnxruntime-web، كله في المتصفح) ---------- */
 const NN_ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-const NN_URL={swap:'https://huggingface.co/ezioruan/inswapper_128.onnx/resolve/main/inswapper_128.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx'};
+const NN_URL={swap:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/inswapper_128_fp16.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx'};
 const ARC_T=[[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]];
 let nnS=null;
 async function nnFetch(u,say,label){
@@ -525,22 +525,33 @@ async function nnFetch(u,say,label){
   if(tot){const out=new Uint8Array(tot);let got=0;for(;;){const {done,value}=await rd.read();if(done)break;out.set(value,got);got+=value.length;say(label+' '+(got/1048576|0)+' / '+(tot/1048576|0)+' ميجا')}return out}
   return new Uint8Array(await r.arrayBuffer());
 }
-async function nnLoad(say){
-  if(nnS)return nnS;
+const NN_SO={executionProviders:['wasm'],graphOptimizationLevel:'disabled',enableCpuMemArena:false,enableMemPattern:false};
+async function nnOrt(){
   if(!window.ort){await new Promise((res,rej)=>{const s=document.createElement('script');s.src=NN_ORT+'ort.min.js';s.onload=res;s.onerror=()=>rej(new Error('تعذّر تحميل onnxruntime'));document.head.appendChild(s)})}
   ort.env.wasm.wasmPaths=NN_ORT;ort.env.wasm.numThreads=1;
-  const arcB=await nnFetch(NN_URL.arc,say,'تحميل نموذج بصمة الوش');
-  const swB=await nnFetch(NN_URL.swap,say,'تحميل نموذج التبديل');
-  // emap matrix is stored inside the swapper model (last initializer)
-  const pat=[0x08,0x80,0x04,0x08,0x80,0x04,0x10,0x01,0x22,0x80,0x80,0x40];let pos=-1;
+}
+async function nnLoad(say){
+  if(nnS)return nnS;
+  await nnOrt();
+  // the fp16 swapper (278 MB) loads on a 2 GB machine; the fp32 one (554 MB) crashes the tab there
+  let swB=await nnFetch(NN_URL.swap,say,'تحميل نموذج التبديل');
+  const pat=[0x69,0x6e,0x69,0x74,0x69,0x61,0x6c,0x69,0x7a,0x65,0x72,0x4A,0x80,0x80,0x40];let pos=-1;
   for(let i=swB.length-4*1048576;i<swB.length-1048576-pat.length;i++){let ok=true;for(let j=0;j<pat.length;j++)if(swB[i+j]!==pat[j]){ok=false;break}if(ok){pos=i+pat.length;break}}
   if(pos<0)throw new Error('emap not found');
   const emap=new Float32Array(swB.buffer.slice(swB.byteOffset+pos,swB.byteOffset+pos+1048576));
-  say('بجهّز النماذج...');
-  const so={executionProviders:['wasm'],graphOptimizationLevel:'all'};
-  const arc=await ort.InferenceSession.create(arcB,so);
-  const sw=await ort.InferenceSession.create(swB,so);
-  nnS={arc,sw,emap};return nnS;
+  say('بجهّز نموذج التبديل...');
+  const sw=await ort.InferenceSession.create(swB,NN_SO);swB=null;
+  nnS={sw,emap};return nnS;
+}
+async function nnEmbed(cs,say){ // ArcFace is loaded only for this step and released right after, to keep memory low
+  const key=cs.getContext('2d').getImageData(0,0,112,112).data.join(',').length+':'+cs.toDataURL().slice(-64);
+  if(nnS.embKey===key)return nnS.emb;
+  const b=await nnFetch(NN_URL.arc,say,'تحميل نموذج بصمة الوش');
+  say('بحسب بصمة الوش...');
+  const arc=await ort.InferenceSession.create(b,NN_SO);
+  const emb=Float32Array.from((await arc.run({[arc.inputNames[0]]:nnTensor(cs,127.5,127.5)}))[arc.outputNames[0]].data);
+  try{await arc.release()}catch(e){}
+  nnS.embKey=key;nnS.emb=emb;return emb;
 }
 function nnKps(F){ // 5 points from the MediaPipe landmarks: eyes, nose tip, mouth corners
   const w=F.W,av=(...i)=>[i.reduce((a,k)=>a+w[k][0],0)/i.length,i.reduce((a,k)=>a+w[k][1],0)/i.length];
@@ -557,7 +568,7 @@ async function nnSwap(srcImg,S,tgtImg,T,say){
   const m=await nnLoad(say);
   say('بحسب بصمة الوش...');await new Promise(r=>setTimeout(r,30));
   const Ms=nnSim(nnKps(S),ARC_T),cs=nnCrop(srcImg,Ms,112);
-  const emb=(await m.arc.run({[m.arc.inputNames[0]]:nnTensor(cs,127.5,127.5)}))[m.arc.outputNames[0]].data;
+  const emb=await nnEmbed(cs,say);
   let nrm=0;for(let i=0;i<512;i++)nrm+=emb[i]*emb[i];nrm=Math.sqrt(nrm);
   const lat=new Float32Array(512);for(let i=0;i<512;i++){const e=emb[i]/nrm;for(let j=0;j<512;j++)lat[j]+=e*m.emap[i*512+j]}
   nrm=0;for(let j=0;j<512;j++)nrm+=lat[j]*lat[j];nrm=Math.sqrt(nrm);for(let j=0;j<512;j++)lat[j]/=nrm;
