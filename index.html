@@ -86,7 +86,7 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -719,7 +719,13 @@ $('#swGo').onclick=()=>{
     if(!T||!S||!T.W||!S.W){$('#swSt').textContent='محتاج وش في كل صورة';return}
     const say=t=>{$('#swSt').textContent=t};
     if(!nnS&&!confirm('الوضع ده بينزّل حوالي 450 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
-    (async()=>{try{const t0=performance.now();let out=await nnSwap(swB.img,S,swA.img,T,say);const enh=$('#nnEnh').value/100;if(enh>0){try{out=await nnEnhance(out,T,say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
+    (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;
+      const tg=$('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T];let out=swA.img;
+      for(let k=0;k<tg.length;k++){
+        if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
+        out=await nnSwap(swB.img,S,out,tg[k],say);
+        if(enh>0){try{out=await nnEnhance(out,tg[k],say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}
+      }watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
   }
   if($('#swMode').value==='morph'){
