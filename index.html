@@ -86,7 +86,7 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -525,7 +525,8 @@ function showResult(cv){
 }
 /* ---------- تبديل بنموذج AI (inswapper_128 + ArcFace عبر onnxruntime-web، كله في المتصفح) ---------- */
 const NN_ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-const NN_URL={swap:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/inswapper_128_fp16.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx',enh:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/gpen_bfr_256.onnx'};
+const NN_URL={swap:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/inswapper_128_fp16.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx',enh:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/gpen_bfr_256.onnx',ss:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/simswap_256.onnx',conv:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_converter_simswap.onnx'};
+const ARC_V1=[[39.73,51.138],[72.27,51.138],[56.0,68.493],[42.463,87.01],[69.537,87.01]];
 const ARC_T=[[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]];
 let nnS=null;
 async function nnFetch(u,say,label){
@@ -539,9 +540,14 @@ async function nnOrt(){
   if(!window.ort){await new Promise((res,rej)=>{const s=document.createElement('script');s.src=NN_ORT+'ort.min.js';s.onload=res;s.onerror=()=>rej(new Error('تعذّر تحميل onnxruntime'));document.head.appendChild(s)})}
   ort.env.wasm.wasmPaths=NN_ORT;ort.env.wasm.numThreads=1;
 }
-async function nnLoad(say){
-  if(nnS)return nnS;
+async function nnLoad(say,kind='insw'){
+  if(nnS&&nnS.kind===kind)return nnS;
+  if(nnS){try{await nnS.sw.release()}catch(e){}nnS=null}
   await nnOrt();
+  if(kind==='ss'){
+    let b=await nnFetch(NN_URL.ss,say,'تحميل نموذج SimSwap');say('بجهّز نموذج التبديل...');
+    const sw=await ort.InferenceSession.create(b,NN_SO);b=null;nnS={sw,kind};return nnS;
+  }
   // the fp16 swapper (278 MB) loads on a 2 GB machine; the fp32 one (554 MB) crashes the tab there
   let swB=await nnFetch(NN_URL.swap,say,'تحميل نموذج التبديل');
   const pat=[0x69,0x6e,0x69,0x74,0x69,0x61,0x6c,0x69,0x7a,0x65,0x72,0x4A,0x80,0x80,0x40];let pos=-1;
@@ -556,7 +562,7 @@ async function nnLoad(say){
   }catch(e){sw=null;gpu=false}
   if(!sw)sw=await ort.InferenceSession.create(swB,NN_SO);
   swB=null;
-  nnS={sw,emap,gpu};return nnS;
+  nnS={sw,emap,gpu,kind};return nnS;
 }
 async function nnEmbed(cs,say){ // ArcFace is loaded only for this step and released right after, to keep memory low
   const key=cs.getContext('2d').getImageData(0,0,112,112).data.join(',').length+':'+cs.toDataURL().slice(-64);
@@ -577,22 +583,33 @@ function nnSim(src,dst){
   let nr=0,ni=0,dn=0;for(let i=0;i<n;i++){const zx=src[i][0]-sx,zy=src[i][1]-sy,wx=dst[i][0]-dx,wy=dst[i][1]-dy;nr+=zx*wx+zy*wy;ni+=zx*wy-zy*wx;dn+=zx*zx+zy*zy}
   const a=nr/dn,b=ni/dn;return[a,b,-b,a,dx-(a*sx-b*sy),dy-(b*sx+a*sy)];
 }
+function nnTensorIN(c){const s=c.width,d=c.getContext('2d').getImageData(0,0,s,s).data,t=new Float32Array(3*s*s),M=[0.485,0.456,0.406],D=[0.229,0.224,0.225];for(let i=0;i<s*s;i++)for(let q=0;q<3;q++)t[q*s*s+i]=(d[i*4+q]/255-M[q])/D[q];return new ort.Tensor('float32',t,[1,3,s,s])}
 function nnCrop(img,M,size){const c=mk(size,size),g=c.getContext('2d',{willReadFrequently:true});g.imageSmoothingQuality='high';g.setTransform(M[0],M[1],M[2],M[3],M[4],M[5]);g.drawImage(img,0,0);return c}
 function nnTensor(c,mean,std){const s=c.width,d=c.getContext('2d').getImageData(0,0,s,s).data,t=new Float32Array(3*s*s);for(let i=0;i<s*s;i++)for(let q=0;q<3;q++)t[q*s*s+i]=(d[i*4+q]-mean)/std;return new ort.Tensor('float32',t,[1,3,s,s])}
 async function nnSwap(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
-  const m=await nnLoad(say);
+  const kind=$('#nnModel').value,sz=kind==='ss'?256:128;
+  const m=await nnLoad(say,kind);
   say('بحسب بصمة الوش...');await new Promise(r=>setTimeout(r,30));
   const Ms=nnSim(nnKps(S),ARC_T),cs=nnCrop(srcImg,Ms,112);
   const emb=await nnEmbed(cs,say);
-  let nrm=0;for(let i=0;i<512;i++)nrm+=emb[i]*emb[i];nrm=Math.sqrt(nrm);
-  const lat=new Float32Array(512);for(let i=0;i<512;i++){const e=emb[i]/nrm;for(let j=0;j<512;j++)lat[j]+=e*m.emap[i*512+j]}
+  let lat=new Float32Array(512),nrm=0;
+  if(kind==='ss'){
+    if(!m.lat||m.latFor!==emb){
+      const cb=await nnFetch(NN_URL.conv,say,'تحميل محوّل البصمة'),cs2=await ort.InferenceSession.create(cb,NN_SO);
+      const r=await cs2.run({[cs2.inputNames[0]]:new ort.Tensor('float32',Float32Array.from(emb),[1,512])});lat=Float32Array.from(r[cs2.outputNames[0]].data);try{await cs2.release()}catch(e){}
+      nrm=0;for(let j=0;j<512;j++)nrm+=lat[j]*lat[j];nrm=Math.sqrt(nrm);for(let j=0;j<512;j++)lat[j]/=nrm;m.lat=lat;m.latFor=emb;
+    }else lat=m.lat;
+  }else{
+  nrm=0;for(let i=0;i<512;i++)nrm+=emb[i]*emb[i];nrm=Math.sqrt(nrm);
+  for(let i=0;i<512;i++){const e=emb[i]/nrm;for(let j=0;j<512;j++)lat[j]+=e*m.emap[i*512+j]}
   nrm=0;for(let j=0;j<512;j++)nrm+=lat[j]*lat[j];nrm=Math.sqrt(nrm);for(let j=0;j<512;j++)lat[j]/=nrm;
+  }
   say('بشغّل نموذج التبديل (ممكن ياخد كام ثانية)...');await new Promise(r=>setTimeout(r,30));
-  const tpl=ARC_T.map(p=>[p[0]*128/112,p[1]*128/112]),Mt=nnSim(nnKps(T),tpl),ct=nnCrop(tgtImg,Mt,128);
-  const o=await m.sw.run({target:nnTensor(ct,0,255),source:new ort.Tensor('float32',lat,[1,512])});
-  const od=o[m.sw.outputNames[0]].data,fk=mk(128,128),fg=fk.getContext('2d'),id=fg.createImageData(128,128);
-  for(let i=0;i<128*128;i++)for(let q=0;q<3;q++){const v=od[q*128*128+i]*255;id.data[i*4+q]=v<0?0:v>255?255:v}
-  for(let i=0;i<128*128;i++)id.data[i*4+3]=255;fg.putImageData(id,0,0);
+  const tpl=(kind==='ss'?ARC_V1:ARC_T).map(p=>[p[0]*sz/112,p[1]*sz/112]),Mt=nnSim(nnKps(T),tpl),ct=nnCrop(tgtImg,Mt,sz);
+  const o=await m.sw.run({target:kind==='ss'?nnTensorIN(ct):nnTensor(ct,0,255),source:new ort.Tensor('float32',lat,[1,512])});
+  const od=o[m.sw.outputNames[0]].data,fk=mk(sz,sz),fg=fk.getContext('2d'),id=fg.createImageData(sz,sz);
+  for(let i=0;i<sz*sz;i++)for(let q=0;q<3;q++){const v=od[q*sz*sz+i]*255;id.data[i*4+q]=v<0?0:v>255?255:v}
+  for(let i=0;i<sz*sz;i++)id.data[i*4+3]=255;fg.putImageData(id,0,0);
   // paste back with a soft face mask (outline minus forehead/hair), inverse of the alignment
   const W=tgtImg.width,H=tgtImg.height,out=mk(W,H),g=out.getContext('2d');g.drawImage(tgtImg,0,0);
   const L=mk(W,H),lg=L.getContext('2d'),inv=new DOMMatrix([Mt[0],Mt[1],Mt[2],Mt[3],Mt[4],Mt[5]]).inverse();
@@ -604,7 +621,7 @@ async function nnSwap(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   T.P.forEach((p,i)=>{const dx=p[0]-T.cx,dy=p[1]-T.cy,u=(dx*c+dy*sn)*0.95,v=(-dx*sn+dy*c)*0.97,px=T.cx+u*c-v*sn,py=T.cy+u*sn+v*c;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath();mg.fill();mg.restore();
   const sm=mk(W,H),sg=sm.getContext('2d');if('filter' in sg)sg.filter='blur('+Math.max(1.5,Math.min(T.rx,T.ry)/12)+'px)';sg.drawImage(mc,0,0);
   lg.globalCompositeOperation='destination-in';lg.drawImage(sm,0,0);
-  const cm=mk(128,128),cg=cm.getContext('2d');if('filter' in cg)cg.filter='blur(5px)';cg.fillStyle='#000';cg.fillRect(9,9,110,110);
+  const cm=mk(sz,sz),cg=cm.getContext('2d'),k=sz/128;if('filter' in cg)cg.filter='blur('+5*k+'px)';cg.fillStyle='#000';cg.fillRect(9*k,9*k,110*k,110*k);
   lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
   g.globalAlpha=strength;g.drawImage(L,0,0);g.globalAlpha=1;
   if(keepMouth&&T.W&&T.W.length>NI){ // keep the target's own mouth (shape, teeth) so the expression doesn't change
@@ -725,7 +742,7 @@ $('#swGo').onclick=()=>{
     const T=swA.pick(),S=swB.pick();
     if(!T||!S||!T.W||!S.W){$('#swSt').textContent='محتاج وش في كل صورة';return}
     const say=t=>{$('#swSt').textContent=t};
-    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 450 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
+    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 420 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
     (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;
       const tg=$('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T];let out=swA.img;
       for(let k=0;k<tg.length;k++){
