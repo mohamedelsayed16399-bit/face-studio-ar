@@ -219,10 +219,11 @@ function toEllipse(p,W,H){
     rx:Math.hypot(l.x-r.x,l.y-r.y)/2*0.95,ry:Math.hypot(top.x-ch.x,top.y-ch.y)/2*0.98,
     rot:Math.atan2(e2.y-e1.y,e2.x-e1.x)};
 }
+const INNER=[33,133,159,145,362,263,386,374,1,168,2,61,291,0,17,152,70,105,107,334,336,300,205,425,13,199];
 const OVAL=[10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109];
 function toFace(p,W,H){
   const e=toEllipse(p,W,H),q=i=>[p[i].x*W,p[i].y*H];
-  e.P=OVAL.map(q);e.A=[q(33),q(263),q(13)];
+  e.P=OVAL.map(q);e.A=[q(33),q(263),q(13)];e.W=INNER.map(q);
   {const c=Math.cos(e.rot),sn=Math.sin(e.rot);e.vb=Math.min(...[70,63,105,66,107,336,296,334,293,300].map(i=>{const b=q(i),dx=b[0]-e.cx,dy=b[1]-e.cy;return -dx*sn+dy*c}))}
   {const ax=(p[454].x-p[234].x)*W,ay=(p[454].y-p[234].y)*H,nx=(p[1].x-p[234].x)*W,ny=(p[1].y-p[234].y)*H;e.yaw=(nx*ax+ny*ay)/Math.max(1e-6,ax*ax+ay*ay)}
   return e;
@@ -230,7 +231,7 @@ function toFace(p,W,H){
 function scaleFace(f,k){
   const g={...f,cx:f.cx*k,cy:f.cy*k,rx:f.rx*k,ry:f.ry*k};if(f.vb!==undefined)g.vb=f.vb*k;
   if(f.P)g.P=f.P.map(a=>[a[0]*k,a[1]*k]);
-  if(f.A)g.A=f.A.map(a=>[a[0]*k,a[1]*k]);
+  if(f.A)g.A=f.A.map(a=>[a[0]*k,a[1]*k]);if(f.W)g.W=f.W.map(a=>[a[0]*k,a[1]*k]);
   return g;
 }
 async function detectFaces(cv){
@@ -255,7 +256,7 @@ async function detectFaces(cv){
   }
   return faces.sort((a,b)=>a.cx-b.cx);
 }
-function shiftFace(f,dx,dy){const g={...f,cx:f.cx+dx,cy:f.cy+dy};if(f.P)g.P=f.P.map(a=>[a[0]+dx,a[1]+dy]);if(f.A)g.A=f.A.map(a=>[a[0]+dx,a[1]+dy]);return g}
+function shiftFace(f,dx,dy){const g={...f,cx:f.cx+dx,cy:f.cy+dy};if(f.P)g.P=f.P.map(a=>[a[0]+dx,a[1]+dy]);if(f.A)g.A=f.A.map(a=>[a[0]+dx,a[1]+dy]);if(f.W)g.W=f.W.map(a=>[a[0]+dx,a[1]+dy]);return g}
 
 /* ---------- Slot: صورة + وجوه + اختيار ---------- */
 class Slot{
@@ -342,7 +343,28 @@ function affine(S,T){
 }
 let FH=true;
 let HR=true;
+function delaunay(pts){
+  const n=pts.length;let a0=1e9,b0=1e9,a1=-1e9,b1=-1e9;
+  for(const p of pts){a0=Math.min(a0,p[0]);b0=Math.min(b0,p[1]);a1=Math.max(a1,p[0]);b1=Math.max(b1,p[1])}
+  const d=Math.max(a1-a0,b1-b0)*30+10,mx=(a0+a1)/2,my=(b0+b1)/2;
+  const P=pts.concat([[mx-d,my-d],[mx,my+d],[mx+d,my-d]]);
+  const mkT=(a,b,c)=>{const A=P[a],B=P[b],C=P[c];const D=2*(A[0]*(B[1]-C[1])+B[0]*(C[1]-A[1])+C[0]*(A[1]-B[1]))||1e-9;
+    const a2=A[0]*A[0]+A[1]*A[1],b2=B[0]*B[0]+B[1]*B[1],c2=C[0]*C[0]+C[1]*C[1];
+    const ux=(a2*(B[1]-C[1])+b2*(C[1]-A[1])+c2*(A[1]-B[1]))/D,uy=(a2*(C[0]-B[0])+b2*(A[0]-C[0])+c2*(B[0]-A[0]))/D;
+    return{v:[a,b,c],x:ux,y:uy,r:(A[0]-ux)**2+(A[1]-uy)**2}};
+  let T=[mkT(n,n+1,n+2)];
+  for(let i=0;i<n;i++){
+    const p=P[i],bad=[],keep=[];
+    for(const t of T)((p[0]-t.x)**2+(p[1]-t.y)**2<t.r?bad:keep).push(t);
+    const E=new Map();
+    for(const t of bad)for(let k=0;k<3;k++){const a=t.v[k],b=t.v[(k+1)%3],key=a<b?a+','+b:b+','+a;E.set(key,(E.get(key)||0)+1);}
+    for(const t of bad)for(let k=0;k<3;k++){const a=t.v[k],b=t.v[(k+1)%3],key=a<b?a+','+b:b+','+a;if(E.get(key)===1)keep.push(mkT(a,b,i))}
+    T=keep;
+  }
+  return T.filter(t=>t.v.every(i=>i<n)).map(t=>t.v);
+}
 function faceLayer(src,S,T,W,H,dstForColor){
+  const useW=!!(S.P&&S.W&&T.P&&T.W);
   const useP=!!(S.P&&S.A&&T.P&&T.A);
   let minx,miny,maxx,maxy;
   if(T.P){minx=Math.min(...T.P.map(p=>p[0]));maxx=Math.max(...T.P.map(p=>p[0]));miny=Math.min(...T.P.map(p=>p[1]));maxy=Math.max(...T.P.map(p=>p[1]))}
@@ -350,12 +372,26 @@ function faceLayer(src,S,T,W,H,dstForColor){
   const m=8,x0=Math.max(0,Math.floor(minx-m)),y0=Math.max(0,Math.floor(miny-m)),x1=Math.min(W,Math.ceil(maxx+m)),y1=Math.min(H,Math.ceil(maxy+m));
   const w=Math.max(1,x1-x0),h=Math.max(1,y1-y0);
   const L=mk(w,h),g=L.getContext('2d',{willReadFrequently:true});
-  g.translate(-x0,-y0);
+  g.setTransform(1,0,0,1,-x0,-y0);
   const af=useP?affine(S.A,T.A):null;
+  g.save();
   if(af)g.transform(af[0],af[1],af[2],af[3],af[4],af[5]);
   else{g.translate(T.cx,T.cy);g.rotate(T.rot);g.scale(T.rx/S.rx,T.ry/S.ry);g.rotate(-S.rot);g.translate(-S.cx,-S.cy)}
-  g.drawImage(src,0,0);g.setTransform(1,0,0,1,0,0);
-  // mask (soft): outline minus forehead/hair above the brows
+  g.drawImage(src,0,0);g.restore();
+  if(useW&&af){
+    // piecewise-affine warp over ~60 landmarks: eyes, brows, nose, mouth and jaw land exactly on the target's
+    const tp=T.P.concat(T.W),sp=S.P.concat(S.W);
+    const tris=delaunay(tp);
+    for(const [a,b,c] of tris){
+      const tt=[tp[a],tp[b],tp[c]],ss=[sp[a],sp[b],sp[c]],f=affine(ss,tt);if(!f)continue;
+      const cx=(tt[0][0]+tt[1][0]+tt[2][0])/3,cy=(tt[0][1]+tt[1][1]+tt[2][1])/3;
+      g.save();g.beginPath();
+      tt.forEach((p,i)=>{const dx=p[0]-cx,dy=p[1]-cy,l=Math.hypot(dx,dy)||1,e=(l+0.8)/l;const X=cx+dx*e,Y=cy+dy*e;i?g.lineTo(X,Y):g.moveTo(X,Y)});
+      g.closePath();g.clip();g.transform(f[0],f[1],f[2],f[3],f[4],f[5]);g.drawImage(src,0,0);g.restore();
+    }
+  }
+  g.setTransform(1,0,0,1,0,0);
+  // geometric mask: outline minus forehead/hair above the brows
   const k=0.1,mw=Math.max(2,Math.round(w*k)),mh=Math.max(2,Math.round(h*k));
   const M=mk(mw,mh),mg=M.getContext('2d');
   mg.scale(mw/w,mh/h);mg.translate(-x0,-y0);mg.fillStyle='#000';
@@ -363,55 +399,68 @@ function faceLayer(src,S,T,W,H,dstForColor){
   mg.save();mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.beginPath();mg.rect(-1e5,vcut,2e5,1e5);mg.clip();mg.rotate(-T.rot);mg.translate(-T.cx,-T.cy);
   mg.beginPath();
   if(T.P){
-    const c=Math.cos(T.rot),sn=Math.sin(T.rot),sx=0.9,sy=0.96;
+    const c=Math.cos(T.rot),sn=Math.sin(T.rot),sx=0.92,sy=0.97;
     T.P.forEach((p,i)=>{const dx=p[0]-T.cx,dy=p[1]-T.cy,u=(dx*c+dy*sn)*sx,v=(-dx*sn+dy*c)*sy;const px=T.cx+u*c-v*sn,py=T.cy+u*sn+v*c;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath();
   }else{mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.ellipse(0,0,T.rx*0.86,T.ry*0.9,0,0,7)}
   mg.fill();mg.restore();
-  // soften the small mask a bit more
   const M2=mk(mw,mh),m2=M2.getContext('2d');
   if('filter' in m2){m2.filter='blur('+Math.max(0.8,Math.min(mw,mh)/26)+'px)'}
   m2.drawImage(M,0,0);
   g.globalCompositeOperation='destination-in';g.imageSmoothingQuality='high';g.drawImage(M2,0,0,w,h);g.globalCompositeOperation='source-over';
-  if(HR){
-    // drop dark/odd source pixels (hair, fringe, glasses frames) outside the inner face; the target's own skin shows through
-    const id=g.getImageData(0,0,w,h),d=id.data,c=Math.cos(T.rot),sn=Math.sin(T.rot),rx=T.rx||50,ry=T.ry||60;
-    let sr=0,sg=0,sb=0,n=0;
-    for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;if(d[i+3]<200)continue;const dx=x0+x-T.cx,dy=y0+y-T.cy,u=(dx*c+dy*sn)/rx,v=(-dx*sn+dy*c)/ry;if(u*u+v*v<0.28&&v>-0.1){sr+=d[i];sg+=d[i+1];sb+=d[i+2];n++}}
-    if(n>20){sr/=n;sg/=n;sb/=n;const rl=0.3*sr+0.59*sg+0.11*sb;
-      for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=(y*w+x)*4;if(!d[i+3])continue;const dx=x0+x-T.cx,dy=y0+y-T.cy,u=(dx*c+dy*sn)/rx,v=(-dx*sn+dy*c)/ry,q=u*u+v*v;if(q<0.3)continue;
-        const l=0.3*d[i]+0.59*d[i+1]+0.11*d[i+2],dist=Math.abs(d[i]-sr)+Math.abs(d[i+1]-sg)+Math.abs(d[i+2]-sb);
-        const dark=Math.max(0,Math.min(1,(rl*0.7-l)/(rl*0.25+1))),off=Math.max(0,Math.min(1,(dist-rl*0.75)/(rl*0.5+1)));
-        const k2=Math.max(dark,off*0.8);if(k2>0)d[i+3]=Math.round(d[i+3]*(1-k2))}
-      // soften the alpha
-      const A=new Float32Array(w*h);for(let i=0;i<w*h;i++)A[i]=d[i*4+3];
-      const r=Math.max(1,Math.round(Math.min(w,h)/45)),B=new Float32Array(w*h);
-      for(let y=0;y<h;y++){let s=0,cnt=0;for(let x=-r;x<=r;x++)if(x>=0&&x<w){s+=A[y*w+x];cnt++}for(let x=0;x<w;x++){B[y*w+x]=s/cnt;const a=x+r+1,b=x-r;if(a<w){s+=A[y*w+a];cnt++}if(b>=0){s-=A[y*w+b];cnt--}}}
-      for(let x=0;x<w;x++){let s=0,cnt=0;for(let y=-r;y<=r;y++)if(y>=0&&y<h){s+=B[y*w+x];cnt++}for(let y=0;y<h;y++){const o=A[y*w+x]>0||true?s/cnt:0;d[(y*w+x)*4+3]=Math.min(d[(y*w+x)*4+3]>0?255:0,o)>0?Math.round(Math.min(o,A[y*w+x]+40)):0;const a=y+r+1,b=y-r;if(a<h){s+=B[a*w+x];cnt++}if(b>=0){s-=B[b*w+x];cnt--}}}
-      g.putImageData(id,0,0)}
+  if(!dstForColor)return{c:L,x:x0,y:y0};
+  const id=g.getImageData(0,0,w,h),d=id.data;
+  const D=dstForColor.getContext('2d').getImageData(x0,y0,w,h).data;
+  const c=Math.cos(T.rot),sn=Math.sin(T.rot),rx=T.rx||50,ry=T.ry||60;
+  const N=w*h,uu=new Float32Array(N),vv=new Float32Array(N);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=x0+x-T.cx,dy=y0+y-T.cy;uu[y*w+x]=(dx*c+dy*sn)/rx;vv[y*w+x]=(-dx*sn+dy*c)/ry}
+  const ref=(arr)=>{let r=0,gg=0,b=0,n=0;for(let i=0;i<N;i++){if(d[i*4+3]<200)continue;const u=uu[i],v=vv[i];if(u*u+v*v<0.25&&v>-0.1&&v<0.5){r+=arr[i*4];gg+=arr[i*4+1];b+=arr[i*4+2];n++}}return n>20?[r/n,gg/n,b/n]:null};
+  const sr=ref(d),tr=ref(D);
+  const odd=(arr,i,R)=>{const rl=0.3*R[0]+0.59*R[1]+0.11*R[2],l=0.3*arr[i]+0.59*arr[i+1]+0.11*arr[i+2],dist=Math.abs(arr[i]-R[0])+Math.abs(arr[i+1]-R[1])+Math.abs(arr[i+2]-R[2]);
+    const dark=Math.max(0,Math.min(1,(rl*0.7-l)/(rl*0.25+1))),off=Math.max(0,Math.min(1,(dist-rl*0.75)/(rl*0.5+1)));return Math.max(dark,off*0.8)};
+  const outer=i=>{const u=uu[i],v=vv[i],q=u*u+v*v;return q>0.55&&!(v>0.45&&Math.abs(u)<0.7)};
+  const Am=new Uint8Array(N),tHair=new Uint8Array(N);
+  for(let i=0;i<N;i++)Am[i]=d[i*4+3];
+  // hair exclusion on both sides: source hair is dropped, target hair stays on top
+  if(HR&&sr&&tr){
+    for(let i=0;i<N;i++){if(!d[i*4+3]||!outer(i))continue;
+      const ks=odd(d,i*4,sr),kt=odd(D,i*4,tr);tHair[i]=kt>0.5?1:0;
+      const kk=Math.max(ks,kt);if(kk>0)d[i*4+3]=Math.round(d[i*4+3]*(1-kk))}
+    const A=new Float32Array(N),B=new Float32Array(N);for(let i=0;i<N;i++)A[i]=d[i*4+3];
+    const r=Math.max(1,Math.round(Math.min(w,h)/60));
+    for(let y=0;y<h;y++){let s=0,cn=0;for(let x=-r;x<=r;x++)if(x>=0&&x<w){s+=A[y*w+x];cn++}for(let x=0;x<w;x++){B[y*w+x]=s/cn;const a=x+r+1,b=x-r;if(a<w){s+=A[y*w+a];cn++}if(b>=0){s-=A[y*w+b];cn--}}}
+    for(let x=0;x<w;x++){let s=0,cn=0;for(let y=-r;y<=r;y++)if(y>=0&&y<h){s+=B[y*w+x];cn++}for(let y=0;y<h;y++){const i=y*w+x;if(Am[i]>0)d[i*4+3]=Math.round(Math.min(s/cn,A[i]+30));const a=y+r+1,b=y-r;if(a<h){s+=B[a*w+x];cn++}if(b>=0){s-=B[b*w+x];cn--}}}
   }
-  if(dstForColor){
-    // regional color match: spatially varying low-frequency correction (target minus source), applied to the source face
-    const id=g.getImageData(0,0,w,h),d=id.data;
-    const D=dstForColor.getContext('2d').getImageData(x0,y0,w,h).data;
-    const f=Math.max(3,Math.round(Math.min(w,h)/14)),sw=Math.ceil(w/f),sh=Math.ceil(h/f);
-    const acc=new Float32Array(sw*sh*4);
-    for(let y=0;y<h;y++){const row=((y/f)|0)*sw;for(let x=0;x<w;x++){const i=(y*w+x)*4,al=d[i+3];if(al>8){const a=al/255,c=(row+((x/f)|0))*4;acc[c]+=(D[i]-d[i])*a;acc[c+1]+=(D[i+1]-d[i+1])*a;acc[c+2]+=(D[i+2]-d[i+2])*a;acc[c+3]+=a}}}
-    const alpha=0.92;
-    for(let y=0;y<h;y++){
-      const fy=y/f-0.5,j0=Math.floor(fy),wy=fy-j0;
-      for(let x=0;x<w;x++){
-        const i=(y*w+x)*4;if(!d[i+3])continue;
-        const fx=x/f-0.5,i0=Math.floor(fx),wx=fx-i0;
-        let r=0,gg=0,b=0,ws=0;
-        for(let jj=0;jj<2;jj++){const j=j0+jj;if(j<0||j>=sh)continue;for(let ii=0;ii<2;ii++){const ci=i0+ii;if(ci<0||ci>=sw)continue;
-          const c=(j*sw+ci)*4,cw=acc[c+3];if(cw<=0.3)continue;
-          const wgt=(ii?wx:1-wx)*(jj?wy:1-wy)*Math.min(1,cw/4);
-          r+=acc[c]/cw*wgt;gg+=acc[c+1]/cw*wgt;b+=acc[c+2]/cw*wgt;ws+=wgt}}
-        if(ws>0){r/=ws;gg/=ws;b/=ws;let v=d[i]+r*alpha;d[i]=v<0?0:v>255?255:v;v=d[i+1]+gg*alpha;d[i+1]=v<0?0:v>255?255:v;v=d[i+2]+b*alpha;d[i+2]=v<0?0:v>255?255:v}
-      }
-    }
-    g.putImageData(id,0,0);
+  // seamless-clone style membrane: harmonic interpolation of (target - source) from the mask boundary
+  const f=Math.max(2,Math.round(Math.min(w,h)/36)),gw=Math.ceil(w/f),gh=Math.ceil(h/f),G=gw*gh;
+  const val=new Float32Array(G*3),wt=new Float32Array(G);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const i=y*w+x,a=Am[i];if(a<8||a>180||tHair[i])continue;
+    const o=i*4,gi=((y/f)|0)*gw+((x/f)|0);
+    if(sr&&tr&&(odd(D,o,tr)>0.5||odd(d,o,sr)>0.5))continue;
+    val[gi*3]+=D[o]-d[o];val[gi*3+1]+=D[o+1]-d[o+1];val[gi*3+2]+=D[o+2]-d[o+2];wt[gi]++}
+  const fixed=new Uint8Array(G);let nf=0;
+  for(let i=0;i<G;i++)if(wt[i]>0){fixed[i]=1;nf++;val[i*3]/=wt[i];val[i*3+1]/=wt[i];val[i*3+2]/=wt[i]}
+  if(nf<3&&sr&&tr){for(let i=0;i<G;i++){fixed[i]=1;val[i*3]=tr[0]-sr[0];val[i*3+1]=tr[1]-sr[1];val[i*3+2]=tr[2]-sr[2]}}
+  else if(nf>=3){
+    let mr=0,mg2=0,mb=0;for(let i=0;i<G;i++)if(fixed[i]){mr+=val[i*3];mg2+=val[i*3+1];mb+=val[i*3+2]}mr/=nf;mg2/=nf;mb/=nf;
+    for(let i=0;i<G;i++)if(!fixed[i]){val[i*3]=mr;val[i*3+1]=mg2;val[i*3+2]=mb}
+    const tmp=new Float32Array(G*3);
+    for(let it=0;it<260;it++){
+      for(let j=0;j<gh;j++)for(let ii=0;ii<gw;ii++){const i=j*gw+ii;if(fixed[i]){tmp[i*3]=val[i*3];tmp[i*3+1]=val[i*3+1];tmp[i*3+2]=val[i*3+2];continue}
+        const l=j*gw+Math.max(0,ii-1),r2=j*gw+Math.min(gw-1,ii+1),u=Math.max(0,j-1)*gw+ii,dn=Math.min(gh-1,j+1)*gw+ii;
+        for(let q=0;q<3;q++)tmp[i*3+q]=(val[l*3+q]+val[r2*3+q]+val[u*3+q]+val[dn*3+q])/4}
+      val.set(tmp)}
   }
+  for(let y=0;y<h;y++){const fy=y/f-0.5,j0=Math.max(0,Math.min(gh-1,Math.floor(fy))),j1=Math.min(gh-1,j0+1),wy=Math.max(0,Math.min(1,fy-j0));
+    for(let x=0;x<w;x++){const o=(y*w+x)*4;if(!d[o+3])continue;
+      const fx=x/f-0.5,i0=Math.max(0,Math.min(gw-1,Math.floor(fx))),i1=Math.min(gw-1,i0+1),wx=Math.max(0,Math.min(1,fx-i0));
+      for(let q=0;q<3;q++){const c0=val[(j0*gw+i0)*3+q]*(1-wx)+val[(j0*gw+i1)*3+q]*wx,c1=val[(j1*gw+i0)*3+q]*(1-wx)+val[(j1*gw+i1)*3+q]*wx;
+        const v=d[o+q]+c0*(1-wy)+c1*wy;d[o+q]=v<0?0:v>255?255:v}}}
+  if(tr){ // pull stray chroma (purple/yellow cast) toward the target's skin chroma, keep the source's light/dark detail
+    const tl=0.3*tr[0]+0.59*tr[1]+0.11*tr[2]+1,CH=0.45;
+    for(let i=0;i<N;i++){const o=i*4;if(!d[o+3])continue;const l=0.3*d[o]+0.59*d[o+1]+0.11*d[o+2],k3=l/tl;
+      for(let q=0;q<3;q++){const t=tr[q]*k3,v=d[o+q]*(1-CH)+t*CH;d[o+q]=v<0?0:v>255?255:v}}
+  }
+  g.putImageData(id,0,0);
   return{c:L,x:x0,y:y0};
 }
 function putLayer(g,L){g.drawImage(L.c,L.x,L.y)}
@@ -876,7 +925,7 @@ function trackStep(tracks,cur,K){
     if(bi>=0&&bd<Math.max(t.rx,t.ry)*2.5){
       used.add(bi);const f=cur[bi],k=0.65,m=(a,b)=>a+(b-a)*k;
       const o={cx:m(t.cx,f.cx),cy:m(t.cy,f.cy),rx:m(t.rx,f.rx),ry:m(t.ry,f.ry),rot:m(t.rot,f.rot),miss:0,yaw:f.yaw,vb:(f.vb!==undefined&&t.vb!==undefined)?m(t.vb,f.vb):f.vb};
-      if(f.P&&t.P&&f.A&&t.A){o.P=f.P.map((p,i)=>[m(t.P[i][0],p[0]),m(t.P[i][1],p[1])]);o.A=f.A.map((p,i)=>[m(t.A[i][0],p[0]),m(t.A[i][1],p[1])])}else{o.P=f.P;o.A=f.A}
+      if(f.P&&t.P&&f.A&&t.A){o.P=f.P.map((p,i)=>[m(t.P[i][0],p[0]),m(t.P[i][1],p[1])]);o.A=f.A.map((p,i)=>[m(t.A[i][0],p[0]),m(t.A[i][1],p[1])]);if(f.W&&t.W)o.W=f.W.map((p,i)=>[m(t.W[i][0],p[0]),m(t.W[i][1],p[1])])}else{o.P=f.P;o.A=f.A;o.W=f.W}
       return o;
     }
     return{...t,miss:t.miss+1};
