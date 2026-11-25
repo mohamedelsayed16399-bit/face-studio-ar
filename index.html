@@ -150,18 +150,20 @@ video{width:100%;border-radius:10px;background:#000}
 </div>
 <div class="card">
 <h3>٢. عايز تعمل إيه؟</h3>
-<div class="row"><select id="vfMode"><option value="photo">حط وش من صورة على الوش اللي في الفيديو</option><option value="two">بدّل وشّين في الفيديو</option></select></div>
+<div class="row"><select id="vfMode"><option value="photo">حط وش من صورة على الوش اللي في الفيديو</option><option value="two">بدّل وشّين في الفيديو</option><option value="stk">ستيكر بس (من غير تبديل)</option></select></div>
 <div id="vfPBox">
 <div class="row"><label class="b">📷 صورة الوش<input type="file" id="vfPFile" accept="image/*"></label><button class="b g" id="vfPDet">🔍 دوّر</button></div>
 <canvas class="view" id="vfPCv" width="300" height="200"></canvas>
 <div class="status" id="vfPSt">اختار صورة فيها وش واضح.</div>
 <div class="row"><span class="note">حجم الدايرة اليدوي</span><input type="range" id="vfPSz" min="8" max="45" value="20"><button class="b g" id="vfPClr">مسح</button></div>
 </div>
+<div class="row"><span>ستيكر يتبع الوش</span><select id="vfStk"><option value="none">بدون</option><option value="glasses">😎 نضارة</option><option value="mustache">🥸 شنب</option><option value="nose">🤡 أنف مهرج</option><option value="crown">👑 تاج</option><option value="party">🎉 طاقية حفلة</option></select></div>
+<div class="row"><label><input type="checkbox" id="vfFast"> وضع أسرع (كشف كل إطارين، أقل دقة)</label></div>
 <div class="row"><span>السرعة/الجودة</span><select id="vfFps"><option value="8">سريع (8 إطار/ث)</option><option value="12" selected>متوسط (12 إطار/ث)</option><option value="15">أحسن (15 إطار/ث)</option></select>
 <select id="vfSize"><option value="360">صغير 360</option><option value="480" selected>480</option><option value="640">كبير 640</option></select></div>
 </div>
 <div class="card">
-<div class="row"><button class="b y" id="vfGo">▶️ ابدأ المعالجة والتصدير</button><button class="b r" id="vfStop" disabled>⏹️ إلغاء</button></div>
+<div class="row"><button class="b g" id="vfPrev3">👀 معاينة 3 ثواني</button><button class="b y" id="vfGo">▶️ ابدأ الفيديو كامل</button><button class="b r" id="vfStop" disabled>⏹️ إلغاء</button></div>
 <div class="status" id="vfSt"></div>
 <canvas class="view" id="vfCv" width="270" height="480"></canvas>
 <div id="vfRes"></div>
@@ -772,12 +774,13 @@ function trackStep(tracks,cur,K){
     return{...t,miss:t.miss+1};
   });
 }
-async function vfProcess(){
-  const v=$('#vfVid'),mode=$('#vfMode').value,K=mode==='photo'?1:2;
+async function vfProcess(maxSec){
+  const v=$('#vfVid'),mode=$('#vfMode').value,K=mode==='two'?2:1,stk=$('#vfStk').value,fast=$('#vfFast').checked;
+  if(mode==='stk'&&stk==='none'){$('#vfSt').textContent='اختار ستيكر الأول';return false}
   const S=vfP.pick();
   if(!v.src||!isFinite(v.duration)){$('#vfSt').textContent='اختار الفيديو الأول';return false}
   if(mode==='photo'&&(!vfP.img||!S)){$('#vfSt').textContent='اختار صورة وش (ودوس على الوش لو ما اتلقاش)';return false}
-  const fps=+$('#vfFps').value,dur=Math.min(v.duration,15),n=Math.max(1,Math.floor(dur*fps));
+  const fps=+$('#vfFps').value,dur=Math.min(v.duration,maxSec||15),n=Math.max(1,Math.floor(dur*fps));
   const sc=Math.min(1,+$('#vfSize').value/Math.max(v.videoWidth,v.videoHeight));
   const W=Math.max(2,Math.round(v.videoWidth*sc/2)*2),H=Math.max(2,Math.round(v.videoHeight*sc/2)*2);
   Object.assign(vf,{fps,W,H,dur:n/fps,frames:[],cancel:false});
@@ -786,23 +789,27 @@ async function vfProcess(){
   $('#vfSt').textContent='بحمّل كاشف الوجوه...';
   let lm;try{lm=await getLMV()}catch(e){$('#vfSt').textContent='تعذّر تحميل كاشف الوجوه (محتاج نت)';return false}
   v.pause();v.muted=true;
+  vf.tsBase=(vf.lastTs||0)+2000;
   let tracks=[],found=0,t0=performance.now();
   for(let i=0;i<n;i++){
     if(vf.cancel)return false;
     await seekTo(v,i/fps+0.001);
     g.drawImage(v,0,0,W,H);
     let cur=[];
-    try{cur=lm.detectForVideo(c,Math.round(i*1000/fps)+1).faceLandmarks.map(p=>toEllipse(p,W,H))}catch(e){}
-    tracks=trackStep(tracks,cur,K);
+    if(!(fast&&i%2)){
+      try{vf.lastTs=Math.round(vf.tsBase+i*1000/fps)+1;cur=lm.detectForVideo(c,vf.lastTs).faceLandmarks.map(p=>toEllipse(p,W,H))}catch(e){}
+      tracks=trackStep(tracks,cur,K);
+    }
     const ok=tracks.length===K&&tracks.every(t=>t.miss<=3);
     og.drawImage(c,0,0);
     if(ok){
       found++;
       if(mode==='photo')og.drawImage(faceLayer(vfP.img,S,tracks[0],W,H,c),0,0);
-      else{
+      else if(mode==='two'){
         og.drawImage(faceLayer(c,tracks[1],tracks[0],W,H,c),0,0);
         og.drawImage(faceLayer(c,tracks[0],tracks[1],W,H,c),0,0);
       }
+      if(stk!=='none')tracks.forEach(t=>drawSticker(og,t,stk));
     }
     watermark(out);
     vf.frames.push(await new Promise(r=>out.toBlob(r,'image/jpeg',0.85)));
@@ -811,6 +818,29 @@ async function vfProcess(){
   }
   vf.found=found;vf.procSec=(performance.now()-t0)/1000;
   return true;
+}
+
+function drawSticker(g,T,id){
+  g.save();g.translate(T.cx,T.cy);g.rotate(T.rot);const rx=T.rx,ry=T.ry;
+  if(id==='glasses'){
+    for(const sx of[-1,1]){g.beginPath();g.roundRect?g.roundRect(sx*0.42*rx-0.3*rx,-0.3*ry-0.16*rx,0.6*rx,0.34*rx,0.12*rx):g.rect(sx*0.42*rx-0.3*rx,-0.3*ry-0.16*rx,0.6*rx,0.34*rx);g.fillStyle='#111';g.fill();
+      g.fillStyle='rgba(255,255,255,.35)';g.fillRect(sx*0.42*rx-0.2*rx,-0.3*ry-0.12*rx,0.16*rx,0.06*rx)}
+    g.strokeStyle='#111';g.lineWidth=0.06*rx;g.beginPath();g.moveTo(-0.12*rx,-0.3*ry);g.lineTo(0.12*rx,-0.3*ry);g.stroke();
+  }else if(id==='mustache'){
+    g.fillStyle='#2b1a0e';for(const sx of[-1,1]){g.beginPath();g.ellipse(sx*0.24*rx,0.4*ry,0.28*rx,0.1*rx,sx*-0.25,0,7);g.fill()}
+  }else if(id==='nose'){
+    g.beginPath();g.arc(0,0.1*ry,0.15*rx,0,7);g.fillStyle='#e0262f';g.fill();g.fillStyle='rgba(255,255,255,.5)';g.beginPath();g.arc(-0.05*rx,0.06*ry,0.04*rx,0,7);g.fill();
+  }else if(id==='crown'){
+    const b=-0.8*ry,h=0.55*ry,w=0.55*rx;
+    g.beginPath();g.moveTo(-w,b);g.lineTo(-w,b-h*0.6);g.lineTo(-w*0.5,b-h*0.3);g.lineTo(0,b-h);g.lineTo(w*0.5,b-h*0.3);g.lineTo(w,b-h*0.6);g.lineTo(w,b);g.closePath();
+    g.fillStyle='#ffcc2a';g.fill();g.strokeStyle='#8a5a00';g.lineWidth=0.03*rx;g.stroke();
+    g.fillStyle='#e04a6a';g.beginPath();g.arc(0,b-h*0.25,0.07*rx,0,7);g.fill();
+  }else if(id==='party'){
+    const b=-0.85*ry;g.beginPath();g.moveTo(-0.5*rx,b);g.lineTo(0.5*rx,b);g.lineTo(0.05*rx,b-1.1*ry);g.closePath();
+    g.fillStyle='#7a3cff';g.fill();g.save();g.clip();g.fillStyle='#ffd24a';for(let i=0;i<4;i++){g.fillRect(-rx,b-0.2*ry*i*1.1-0.1*ry,2*rx,0.07*ry)}g.restore();
+    g.beginPath();g.arc(0.05*rx,b-1.1*ry,0.1*rx,0,7);g.fillStyle='#ff4d7a';g.fill();
+  }
+  g.restore();
 }
 let vfAC=null,vfSrc=null;
 async function vfExport(){
@@ -850,11 +880,13 @@ async function vfExport(){
   $('#vfRes').innerHTML='<h3>✅ الفيديو جاهز ('+(blob.size/1048576).toFixed(1)+' ميجا)</h3><video controls playsinline src="'+url+'"></video><div class="row"><a class="b y" download="face-video.'+ext+'" href="'+url+'">💾 حمّل الفيديو</a></div>';
   $('#vfSt').textContent='خلص. وش اتلقى في '+vf.found+' من '+n+' إطار. المعالجة خدت '+vf.procSec.toFixed(0)+' ث.';
 }
-$('#vfGo').onclick=async()=>{
+async function vfRun(sec){
   if(vf.busy)return;vf.busy=true;$('#vfGo').disabled=true;$('#vfStop').disabled=false;$('#vfRes').innerHTML='';
-  try{if(await vfProcess())await vfExport()}catch(e){$('#vfSt').textContent='حصل خطأ: '+e.message}
+  try{if(await vfProcess(sec))await vfExport()}catch(e){$('#vfSt').textContent='حصل خطأ: '+e.message}
   vf.busy=false;$('#vfGo').disabled=false;$('#vfStop').disabled=true;
-};
+}
+$('#vfGo').onclick=()=>vfRun(15);
+$('#vfPrev3').onclick=()=>vfRun(3);
 $('#vfStop').onclick=()=>{vf.cancel=true;$('#vfSt').textContent='اتلغى.'};
 
 window.__dbg={vf,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
