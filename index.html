@@ -86,7 +86,9 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
+<div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
 <div class="status" id="swSt"></div>
 <div class="note">النتيجة عليها علامة صغيرة "للمرح". استخدم صور ناس موافقة بس.</div>
@@ -507,16 +509,22 @@ $('#swMode').onchange=()=>{
   $('#swBCard').style.display=two?'':'none';
   $('#swATitle').textContent=md==='morph'?'الصورة الأولى':two?'الصورة الأساسية (اللي هتتغير)':'الصورة';
   $('#swShuf').style.display=two?'none':'';
-  $('#swMtRow').style.display=md==='morph'?'':'none';$('#swMRow2').style.display=md==='morph'?'':'none';
+  $('#nnEnhRow').style.display=md==='nn'?'':'none';$('#swMtRow').style.display=md==='morph'?'':'none';$('#swMRow2').style.display=md==='morph'?'':'none';
   $('#swGo').textContent=md==='morph'?'🧬 اعمل المورف':'🔄 بدّل الوجوه';
 };
+let swBefore=null;
+$('#nnEnh').oninput=()=>{$('#nnEnhV').textContent=$('#nnEnh').value+'%'};
+$('#baSl').oninput=()=>{ // before/after slider: left = result, right = original photo
+  if(!swResult||!swBefore)return;const o=$('#swOut'),g=o.getContext('2d'),x=o.width*$('#baSl').value/100;
+  g.drawImage(swResult,0,0);if(x<o.width){g.save();g.beginPath();g.rect(x,0,o.width-x,o.height);g.clip();g.drawImage(swBefore,0,0,o.width,o.height);g.restore();g.fillStyle='#fff';g.fillRect(x-1,0,2,o.height)}
+};
 function showResult(cv){
-  swResult=cv;const o=$('#swOut');o.width=cv.width;o.height=cv.height;o.getContext('2d').drawImage(cv,0,0);
+  swResult=cv;swBefore=swA.img;const o=$('#swOut');o.width=cv.width;o.height=cv.height;o.getContext('2d').drawImage(cv,0,0);$('#baRow').style.display=swBefore?'':'none';$('#baSl').value=100;
   ['#swDl','#swShare','#swToVid'].forEach(s=>$(s).disabled=false);
 }
 /* ---------- تبديل بنموذج AI (inswapper_128 + ArcFace عبر onnxruntime-web، كله في المتصفح) ---------- */
 const NN_ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
-const NN_URL={swap:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/inswapper_128_fp16.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx'};
+const NN_URL={swap:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/inswapper_128_fp16.onnx',arc:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/arcface_w600k_r50.onnx',enh:'https://huggingface.co/facefusion/models-3.0.0/resolve/main/gpen_bfr_256.onnx'};
 const ARC_T=[[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]];
 let nnS=null;
 async function nnFetch(u,say,label){
@@ -598,7 +606,28 @@ async function nnSwap(srcImg,S,tgtImg,T,say){
   const cm=mk(128,128),cg=cm.getContext('2d');if('filter' in cg)cg.filter='blur(5px)';cg.fillStyle='#000';cg.fillRect(9,9,110,110);
   lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
   g.drawImage(L,0,0);
+  out._sm=sm;
   return out;
+}
+// face restoration (GPEN-BFR-256, 76 MB): re-crop the finished face, restore detail, paste back inside the same soft face mask
+async function nnEnhance(out,T,say,strength){
+  await nnOrt();
+  const b=await nnFetch(NN_URL.enh,say,'تحميل محسّن الوش');
+  say('بحسّن تفاصيل الوش...');await new Promise(r=>setTimeout(r,30));
+  const sess=await ort.InferenceSession.create(b,NN_SO);
+  const tpl=ARC_T.map(p=>[p[0]*256/112,p[1]*256/112]),Me=nnSim(nnKps(T),tpl),crop=nnCrop(out,Me,256);
+  const o=await sess.run({[sess.inputNames[0]]:nnTensor(crop,127.5,127.5)});
+  const od=o[sess.outputNames[0]].data;try{await sess.release()}catch(e){}
+  const fk=mk(256,256),fg=fk.getContext('2d'),id=fg.createImageData(256,256);
+  for(let i=0;i<256*256;i++)for(let q=0;q<3;q++){const v=(od[q*256*256+i]+1)*127.5;id.data[i*4+q]=v<0?0:v>255?255:v}
+  for(let i=0;i<256*256;i++)id.data[i*4+3]=255;fg.putImageData(id,0,0);
+  const W=out.width,H=out.height,L=mk(W,H),lg=L.getContext('2d'),inv=new DOMMatrix([Me[0],Me[1],Me[2],Me[3],Me[4],Me[5]]).inverse();
+  lg.setTransform(inv);lg.imageSmoothingQuality='high';lg.drawImage(fk,0,0);lg.setTransform(1,0,0,1,0,0);
+  lg.globalCompositeOperation='destination-in';lg.drawImage(out._sm,0,0);
+  const cm=mk(256,256),cg=cm.getContext('2d');if('filter' in cg)cg.filter='blur(10px)';cg.fillStyle='#000';cg.fillRect(18,18,220,220);
+  lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
+  const res=mk(W,H),rg=res.getContext('2d');rg.drawImage(out,0,0);rg.globalAlpha=strength;rg.drawImage(L,0,0);
+  return res;
 }
 window.__nn={nnSwap,nnLoad};
 
@@ -689,8 +718,8 @@ $('#swGo').onclick=()=>{
     const T=swA.pick(),S=swB.pick();
     if(!T||!S||!T.W||!S.W){$('#swSt').textContent='محتاج وش في كل صورة';return}
     const say=t=>{$('#swSt').textContent=t};
-    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 730 ميجا (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
-    (async()=>{try{const t0=performance.now();const out=await nnSwap(swB.img,S,swA.img,T,say);watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
+    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 450 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
+    (async()=>{try{const t0=performance.now();let out=await nnSwap(swB.img,S,swA.img,T,say);const enh=$('#nnEnh').value/100;if(enh>0){try{out=await nnEnhance(out,T,say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
   }
   if($('#swMode').value==='morph'){
