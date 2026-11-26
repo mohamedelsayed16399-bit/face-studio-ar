@@ -635,6 +635,11 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     for(let q=0;q<3;q++){const ra=Math.max(.85,Math.min(1.2,Math.sqrt(sB[q]/(sA[q]||1)))),sh=(mB[q]-mA[q])*.7;
       for(let i=0;i<sz*sz;i++){const v=(d[i*4+q]-mA[q])*ra+mA[q]+sh;d[i*4+q]=v<0?0:v>255?255:v}}
     fg.putImageData(full,0,0)}catch(e){}
+  // local tone harmonize: replace the swapped face's low-frequency colour with the target's (kills grey eye-makeup / blotches, keeps detail)
+  try{const bl=(c)=>{const t=mk(sz,sz),q=t.getContext('2d',{willReadFrequently:true});q.filter='blur('+Math.round(sz*.07)+'px)';q.drawImage(c,0,0);return q.getImageData(0,0,sz,sz).data};
+    const bF=bl(fk),bT=bl(ct),full=fg.getImageData(0,0,sz,sz),d=full.data,K=.8;
+    for(let i=0;i<sz*sz;i++)for(let q=0;q<3;q++){let df=(bT[i*4+q]-bF[i*4+q])*K;df=df<-70?-70:df>70?70:df;const v=d[i*4+q]+df;d[i*4+q]=v<0?0:v>255?255:v}
+    fg.putImageData(full,0,0)}catch(e){}
   // paste back with a soft face mask (outline minus forehead/hair), inverse of the alignment
   const W=tgtImg.width,H=tgtImg.height,out=mk(W,H),g=out.getContext('2d');g.drawImage(tgtImg,0,0);
   const L=mk(W,H),lg=L.getContext('2d'),inv=new DOMMatrix([Mt[0],Mt[1],Mt[2],Mt[3],Mt[4],Mt[5]]).inverse();
