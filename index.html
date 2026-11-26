@@ -91,6 +91,7 @@ select,input,button{max-width:100%}.row{flex-wrap:wrap}#swMode{width:100%;box-si
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
+<div class="row"><button class="b" id="lightBtn" type="button">⚡ وضع خفيف (من غير تحميل 415 ميجا، أسرع وأخف على الموبايل)</button></div>
 <div class="status" id="swSt"></div>
 <div class="note">النتيجة عليها علامة صغيرة "للمرح". استخدم صور ناس موافقة بس.</div>
 </div>
@@ -1436,11 +1437,12 @@ if(IS_PHONE){
   $('#nnModel').value='ss';[...$('#nnModel').options].forEach(o=>{if(o.value!=='ss')o.remove()});
   $('#nnEnh').value=0;$('#nnEnhV').textContent='0%';$('#vfSize').value='360';$('#vfNnFps').value='3';
 }
-if(nnBlocked()){
+if(nnBlocked()||(navigator.deviceMemory&&navigator.deviceMemory<=2)){
   $('#swMode').value='two';$('#vfMode').value='photo';
   $('#swSt').textContent=$('#vfSt').textContent='⚠️ الموديل الذكي قفل الصفحة المرة اللي فاتت (الرام مش كفاية). حوّلتك للوضع الخفيف. تقدر ترجع للذكي من القايمة وهيسألك قبلها.';
 }
 $('#swMode').onchange();$('#vfMode').onchange();
+$('#lightBtn').onclick=()=>{$('#swMode').value='two';$('#vfMode').value='photo';$('#swMode').onchange();$('#vfMode').onchange();$('#swSt').textContent='⚡ الوضع الخفيف شغّال: بدون موديل ذكي. الجودة أقل لكن أسرع وأخف. ارجع للذكي من القايمة فوق.'};
 window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
