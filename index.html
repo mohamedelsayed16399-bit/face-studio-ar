@@ -57,7 +57,7 @@ video{width:100%;border-radius:10px;background:#000}
 <div class="card">
 <h3>١. اختار الطريقة</h3>
 <div class="row">
-<select id="swMode"><option value="one">صورة واحدة فيها وشّين أو أكتر (بدّلهم)</option><option value="two">صورتين (حط وش صورة على صورة تانية)</option><option value="nn">🤖 تبديل بنموذج ذكاء اصطناعي (تجريبي، تحميل حوالي 730 ميجا مرة واحدة)</option><option value="morph">🧬 مورف: دمج وشّين بسلايدر (دايمًا شكله حلو)</option></select>
+<select id="swMode"><option value="nn">🤖 بدّل بوش من صورة تانية (ذكاء اصطناعي، الأحسن)</option><option value="nns">🔁 بدّل الوجوه المختارة مع بعض في نفس الصورة (ذكاء اصطناعي)</option><option value="one">صورة واحدة فيها وشّين أو أكتر (بدّلهم)</option><option value="two">صورتين (حط وش صورة على صورة تانية)</option><option value="morph">🧬 مورف: دمج وشّين بسلايدر (دايمًا شكله حلو)</option></select>
 </div>
 </div>
 <div class="card">
@@ -66,7 +66,7 @@ video{width:100%;border-radius:10px;background:#000}
 <button class="b g" id="swADet">🔍 دوّر على الوجوه</button></div>
 <canvas class="view" id="swACv" width="300" height="200"></canvas>
 <div class="status" id="swASt">اختار صورة. الوجوه بتظهر في دواير مرقّمة. دوس على وش عشان تختاره، ولو الوش ما اتلقاش دوس عليه بإيدك وهيتحط دايرة.</div>
-<div class="row"><span class="note">حجم الدايرة اليدوي</span><input type="range" id="swASz" min="8" max="45" value="20"><button class="b g" id="swAClr">مسح الدواير</button></div>
+<div class="row"><span class="note">حجم الدايرة اليدوي</span><input type="range" id="swASz" min="8" max="45" value="20"><button class="b g" id="swAClr">مسح الدواير</button><button class="b g" id="swAAll">✅ اختار كل الوجوه</button></div>
 </div>
 <div class="card" id="swBCard" style="display:none">
 <h3>الصورة التانية (صاحبة الوش الجديد)</h3>
@@ -86,7 +86,7 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -159,7 +159,7 @@ video{width:100%;border-radius:10px;background:#000}
 </div>
 <div class="card">
 <h3>٢. عايز تعمل إيه؟</h3>
-<div class="row"><select id="vfMode"><option value="photo">حط وش من صورة على الوش اللي في الفيديو</option><option value="two">بدّل وشّين في الفيديو</option><option value="stk">ستيكر بس (من غير تبديل)</option></select></div>
+<div class="row"><select id="vfMode"><option value="nn">🤖 حط وش من صورة (نموذج ذكي، الأحسن وأبطأ)</option><option value="photo">حط وش من صورة على الوش اللي في الفيديو</option><option value="two">بدّل وشّين في الفيديو</option><option value="stk">ستيكر بس (من غير تبديل)</option></select></div>
 <div id="vfPBox">
 <div class="row"><label class="b">📷 صورة الوش<input type="file" id="vfPFile" accept="image/*"></label><button class="b g" id="vfPDet">🔍 دوّر</button></div>
 <canvas class="view" id="vfPCv" width="300" height="200"></canvas>
@@ -168,6 +168,7 @@ video{width:100%;border-radius:10px;background:#000}
 </div>
 <div class="row"><span>ستيكر يتبع الوش</span><select id="vfStk"><option value="none">بدون</option><option value="glasses">😎 نضارة</option><option value="mustache">🥸 شنب</option><option value="nose">🤡 أنف مهرج</option><option value="crown">👑 تاج</option><option value="party">🎉 طاقية حفلة</option></select></div>
 <div class="row"><label><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر</label><span>كشف الوش</span><select id="vfFast"><option value="1">كل إطار (أدق)</option><option value="2">كل إطارين (أسرع)</option><option value="3">كل 3 إطارات (أسرع بكتير)</option></select></div>
+<div class="row" id="vfNnRow"><span class="note">النموذج الذكي بطيء (حوالي 3 إلى 10 ثواني للإطار). عدد الإطارات في الثانية:</span><select id="vfNnFps"><option value="3">3 (أسرع)</option><option value="5" selected>5</option><option value="8">8 (أنعم)</option></select><label class="note"><input type="checkbox" id="vfNnEnh"> تحسين الوش (أبطأ)</label></div>
 <div class="row"><span>السرعة/الجودة</span><select id="vfFps"><option value="8">سريع (8 إطار/ث)</option><option value="12" selected>متوسط (12 إطار/ث)</option><option value="15">أحسن (15 إطار/ث)</option></select>
 <select id="vfSize"><option value="360">صغير 360</option><option value="480" selected>480</option><option value="640">كبير 640</option></select></div>
 </div>
@@ -267,7 +268,7 @@ function shiftFace(f,dx,dy){const g={...f,cx:f.cx+dx,cy:f.cy+dy};if(f.P)g.P=f.P.
 /* ---------- Slot: صورة + وجوه + اختيار ---------- */
 class Slot{
   constructor(cv,fileEl,detBtn,clrBtn,szEl,stEl,onChange){
-    this.cv=cv;this.img=null;this.faces=[];this.sel=[];this.sz=szEl;this.st=stEl;this.onChange=onChange||(()=>{});
+    this.cv=cv;this.img=null;this.faces=[];this.sel=[];this.maxSel=2;this.sz=szEl;this.st=stEl;this.onChange=onChange||(()=>{});
     fileEl.onchange=async()=>{if(fileEl.files[0]){await this.load(fileEl.files[0]);fileEl.value=''}};
     detBtn.onclick=()=>this.detect();
     clrBtn.onclick=()=>{this.faces=[];this.sel=[];this.draw();this.say('اتمسحت الدواير. دوس على الوش عشان تحط دايرة.');this.onChange()};
@@ -293,19 +294,19 @@ class Slot{
     if(!this.img)return;
     const r=this.cv.getBoundingClientRect();
     const x=(e.clientX-r.left)*this.cv.width/r.width,y=(e.clientY-r.top)*this.cv.height/r.height;
-    let hit=-1;
+    let hit=-1,bd=1e9;
     this.faces.forEach((f,i)=>{
       const c=Math.cos(-f.rot),s=Math.sin(-f.rot),dx=x-f.cx,dy=y-f.cy;
-      const u=(dx*c-dy*s)/f.rx,v=(dx*s+dy*c)/f.ry;
-      if(u*u+v*v<=1)hit=i;
+      const u=(dx*c-dy*s)/f.rx,v=(dx*s+dy*c)/f.ry,d=u*u+v*v;
+      if(d<=1&&d<bd){bd=d;hit=i}  // overlapping circles: the face whose centre is nearest wins
     });
     if(hit>=0){
       const k=this.sel.indexOf(hit);
-      if(k>=0)this.sel.splice(k,1);else{this.sel.push(hit);if(this.sel.length>2)this.sel.shift()}
+      if(k>=0)this.sel.splice(k,1);else{this.sel.push(hit);if(this.sel.length>this.maxSel)this.sel.shift()}
     }else{
       const m=Math.min(this.cv.width,this.cv.height)*this.sz.value/100;
       this.faces.push({cx:x,cy:y,rx:m*0.8,ry:m,rot:0});
-      this.sel.push(this.faces.length-1);if(this.sel.length>2)this.sel.shift();
+      this.sel.push(this.faces.length-1);if(this.sel.length>this.maxSel)this.sel.shift();
     }
     this.draw();this.onChange();
   }
@@ -502,6 +503,8 @@ function watermark(cv){
   g.fillStyle='#fff';g.textBaseline='middle';g.fillText(t,cv.width-w-6+fs/2,cv.height-fs*1.05-6);g.restore();
 }
 const swA=new Slot($('#swACv'),$('#swAFile'),$('#swADet'),$('#swAClr'),$('#swASz'),$('#swASt'));
+swA.maxSel=99;
+$('#swAAll').onclick=()=>{swA.sel=swA.faces.map((f,i)=>i);swA.draw();swA.say(swA.faces.length?('اتختار '+swA.faces.length+' وش. دوس على وش عشان تشيله.'):'مفيش وجوه');};
 const swB=new Slot($('#swBCv'),$('#swBFile'),$('#swBDet'),$('#swBClr'),$('#swBSz'),$('#swBSt'));
 let swResult=null;
 $('#swMode').onchange=()=>{
@@ -509,7 +512,7 @@ $('#swMode').onchange=()=>{
   $('#swBCard').style.display=two?'':'none';
   $('#swATitle').textContent=md==='morph'?'الصورة الأولى':two?'الصورة الأساسية (اللي هتتغير)':'الصورة';
   $('#swShuf').style.display=two?'none':'';
-  $('#nnEnhRow').style.display=md==='nn'?'':'none';$('#swMtRow').style.display=md==='morph'?'':'none';$('#swMRow2').style.display=md==='morph'?'':'none';
+  $('#nnEnhRow').style.display=(md==='nn'||md==='nns')?'':'none';$('#swMtRow').style.display=md==='morph'?'':'none';$('#swMRow2').style.display=md==='morph'?'':'none';
   $('#swGo').textContent=md==='morph'?'🧬 اعمل المورف':'🔄 بدّل الوجوه';
 };
 let swBefore=null;
@@ -737,6 +740,20 @@ $('#swMt').oninput=()=>{if($('#swMode').value==='morph'&&swResult&&morphRender==
 $('#swMFace').onchange=()=>{if($('#swMode').value==='morph'&&swResult)morphRender($('#swMt').value/100)};
 $('#swGo').onclick=()=>{
   if(!swA.img){$('#swSt').textContent='اختار الصورة الأول';return}
+  if($('#swMode').value==='nns'){
+    const say=t=>{$('#swSt').textContent=t};
+    let ids=swA.sel.length>=2?swA.sel.slice():swA.faces.map((f,i)=>i);
+    const fs=ids.map(i=>swA.faces[i]).filter(f=>f&&f.W&&f.P);
+    if(fs.length<2){say('محتاج وشّين على الأقل في الصورة. دوس على الوجوه اللي عايز تبدّلهم (أو اضغط اختار كل الوجوه).');return}
+    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 420 ميجا مرة واحدة. تكمّل؟'))return;
+    (async()=>{try{const t0=performance.now(),enh=$('#nnEnh').value/100;let out=swA.img;
+      for(let k=0;k<fs.length;k++){
+        say('وش '+(k+1)+' من '+fs.length+'...');
+        out=await nnSwap(swA.img,fs[(k+1)%fs.length],out,fs[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
+        if(enh>0){try{out=await nnEnhance(out,fs[k],say,enh)}catch(e){}}
+      }watermark(out);showResult(out);say('تمّ ✅ بدّلت '+fs.length+' وجوه مع بعض ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر التبديل: '+(e.message||e))}})();
+    return;
+  }
   if($('#swMode').value==='nn'){
     if(!swB.img){$('#swSt').textContent='اختار الصورة التانية';return}
     const T=swA.pick(),S=swB.pick();
@@ -744,7 +761,7 @@ $('#swGo').onclick=()=>{
     const say=t=>{$('#swSt').textContent=t};
     if(!nnS&&!confirm('الوضع ده بينزّل حوالي 420 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
     (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;
-      const tg=$('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T];let out=swA.img;
+      const tg=swA.sel.length?swA.sel.map(i=>swA.faces[i]).filter(f=>f.W&&f.P):($('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T]);let out=swA.img;
       for(let k=0;k<tg.length;k++){
         if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
         out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
@@ -1174,7 +1191,7 @@ $('#vfFDet').onclick=async()=>{
 $('#vfFClr').addEventListener('click',()=>{$('#vfFCv').style.display='none'});
 const vfP=new Slot($('#vfPCv'),$('#vfPFile'),$('#vfPDet'),$('#vfPClr'),$('#vfPSz'),$('#vfPSt'));
 const vf={frames:[],cancel:false,busy:false,fps:12,W:0,H:0,dur:0,url:null};
-$('#vfMode').onchange=()=>{$('#vfPBox').style.display=$('#vfMode').value==='photo'?'':'none'};
+$('#vfMode').onchange=()=>{const m=$('#vfMode').value;$('#vfPBox').style.display=(m==='photo'||m==='nn')?'':'none';$('#vfNnRow').style.display=m==='nn'?'':'none'};
 $('#vfFile').onchange=e=>{
   const f=e.target.files[0];if(!f)return;
   if(vf.url)URL.revokeObjectURL(vf.url);vf.url=URL.createObjectURL(f);
@@ -1208,12 +1225,12 @@ function trackStep(tracks,cur,K){
   });
 }
 async function vfProcess(maxSec){
-  const v=$('#vfVid'),mode=$('#vfMode').value,K=mode==='two'?2:1,stk=$('#vfStk').value,every=+$('#vfFast').value;
+  const v=$('#vfVid'),mode=$('#vfMode').value,K=mode==='two'?2:1,stk=$('#vfStk').value,every=mode==='nn'?1:+$('#vfFast').value;
   if(mode==='stk'&&stk==='none'){$('#vfSt').textContent='اختار ستيكر الأول';return false}
   const S=vfP.pick();
   if(!v.src||!isFinite(v.duration)){$('#vfSt').textContent='اختار الفيديو الأول';return false}
-  if(mode==='photo'&&(!vfP.img||!S)){$('#vfSt').textContent='اختار صورة وش (ودوس على الوش لو ما اتلقاش)';return false}
-  const fps=+$('#vfFps').value,dur=Math.min(v.duration,maxSec||15),n=Math.max(1,Math.floor(dur*fps));
+  if((mode==='photo'||mode==='nn')&&(!vfP.img||!S)){$('#vfSt').textContent='اختار صورة وش (ودوس على الوش لو ما اتلقاش)';return false}
+  const fps=mode==='nn'?+$('#vfNnFps').value:+$('#vfFps').value,dur=Math.min(v.duration,maxSec||15),n=Math.max(1,Math.floor(dur*fps));
   const sc=Math.min(1,+$('#vfSize').value/Math.max(v.videoWidth,v.videoHeight));
   const W=Math.max(2,Math.round(v.videoWidth*sc/2)*2),H=Math.max(2,Math.round(v.videoHeight*sc/2)*2);
   Object.assign(vf,{fps,W,H,dur:n/fps,frames:[],cancel:false,prof:{seek:0,det:0,layer:0,blob:0}});
@@ -1224,7 +1241,10 @@ async function vfProcess(maxSec){
   v.pause();v.muted=true;
   vf.tsBase=(vf.lastTs||0)+2000;
   const dk=Math.min(1,384/Math.max(W,H)),dc=dk<1?mk(Math.round(W*dk),Math.round(H*dk)):null,dg=dc?dc.getContext('2d'):null;
-  let tracks=[],vel=[],found=0,skipYaw=0,t0=performance.now();
+  let tracks=[],vel=[],found=0,skipYaw=0,seenFace=0,t0=performance.now();
+  if(mode==='nn'&&!S.W){$('#vfSt').textContent='مش لاقي نقط الوش في الصورة. دوس على الوش تاني.';return false}
+  const vsay=t=>{if(/ميجا|تحميل|بجهّز/.test(t))$('#vfSt').textContent=t};
+  if(mode==='nn'&&!nnS&&!confirm('التبديل الذكي بينزّل حوالي 420 ميجا مرة واحدة وبياخد وقت. تكمّل؟'))return false;
   if(vfF.img&&vfF.faces.length&&vfF.sel.length>=K){const kk=W/vfF.img.width;tracks=vfF.sel.slice(0,K).map(i=>({...scaleFace(vfF.faces[i],kk),miss:0})).sort((a,b)=>a.cx-b.cx)}
   for(let i=0;i<n;i++){
     if(vf.cancel)return false;
@@ -1238,12 +1258,18 @@ async function vfProcess(maxSec){
     }else if(vel.length===tracks.length){tracks=tracks.map((t,j)=>shiftFace(t,vel[j][0],vel[j][1]))}
     vf.prof.det+=performance.now()-_t;_t=performance.now();
     const ok=tracks.length===K&&tracks.every(t=>t.miss<=3);
-    const turned=ok&&tracks.some(t=>t.yaw!==undefined&&(t.yaw<0.2||t.yaw>0.8));
+    if(ok)seenFace++;
+    const turned=ok&&tracks.some(t=>t.yaw!==undefined&&(mode==='nn'?(t.yaw<0.1||t.yaw>0.9):(t.yaw<0.2||t.yaw>0.8)));
     og.drawImage(c,0,0);
     if(turned)skipYaw++;
     if(ok&&!turned){
       found++;
-      if(mode==='photo')putLayer(og,faceLayer(vfP.img,S,tracks[0],W,H,c));
+      if(mode==='nn'){
+        try{let r=await nnSwap(vfP.img,S,c,tracks[0],vsay,$('#nnStr').value/100,$('#nnMouth').checked);
+          if($('#vfNnEnh').checked){try{r=await nnEnhance(r,tracks[0],vsay,0.7)}catch(e){}}
+          og.drawImage(r,0,0)}catch(e){found--;vf.err=e.message||String(e)}
+      }
+      else if(mode==='photo')putLayer(og,faceLayer(vfP.img,S,tracks[0],W,H,c));
       else if(mode==='two'){
         putLayer(og,faceLayer(c,tracks[1],tracks[0],W,H,c));
         putLayer(og,faceLayer(c,tracks[0],tracks[1],W,H,c));
@@ -1258,6 +1284,7 @@ async function vfProcess(maxSec){
     $('#vfSt').textContent='معالجة '+(i+1)+' / '+n+' إطار | باقي حوالي '+Math.ceil(eta)+' ث | وش اتلقى في '+found+' إطار';
   }
   vf.found=found;vf.skipYaw=skipYaw;vf.procSec=(performance.now()-t0)/1000;
+  if(found<=0){$('#vfSt').textContent='⚠️ ما اتبدّلش ولا إطار. وش اتلقى في '+seenFace+' من '+n+' إطار'+(skipYaw?'، و'+skipYaw+' إطار الوش فيها ملفوف بزيادة':'')+(vf.err?'. خطأ النموذج: '+vf.err:'')+'. جرّب فيديو الوش فيه واضح ومواجه الكاميرا، أو دوس "اختار الوش اللي في الفيديو".';return false}
   return true;
 }
 
@@ -1331,6 +1358,7 @@ $('#vfPrev3').onclick=()=>vfRun(3);
 $('#vfStop').onclick=()=>{vf.cancel=true;$('#vfSt').textContent='اتلغى.'};
 
 document.querySelectorAll('.fhBox').forEach(b=>b.onchange=()=>{FH=b.checked;document.querySelectorAll('.fhBox').forEach(x=>x.checked=FH)});
+$('#swMode').onchange();$('#vfMode').onchange();
 window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
