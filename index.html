@@ -625,6 +625,16 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   const od=o[m.sw.outputNames[0]].data,fk=mk(sz,sz),fg=fk.getContext('2d'),id=fg.createImageData(sz,sz);
   for(let i=0;i<sz*sz;i++)for(let q=0;q<3;q++){const v=od[q*sz*sz+i]*255;id.data[i*4+q]=v<0?0:v>255?255:v}
   for(let i=0;i<sz*sz;i++)id.data[i*4+3]=255;fg.putImageData(id,0,0);
+  // colour match: pull the swapped face toward the target's lighting/skin tone (fixes grey/washed patches)
+  try{const x0=Math.round(sz*.22),y0=Math.round(sz*.3),ww=Math.round(sz*.56),hh=Math.round(sz*.52);
+    const A=fg.getImageData(x0,y0,ww,hh).data,B=ct.getContext('2d').getImageData(x0,y0,ww,hh).data,n=ww*hh,mA=[0,0,0],mB=[0,0,0],sA=[0,0,0],sB=[0,0,0];
+    for(let i=0;i<n;i++)for(let q=0;q<3;q++){mA[q]+=A[i*4+q];mB[q]+=B[i*4+q]}
+    for(let q=0;q<3;q++){mA[q]/=n;mB[q]/=n}
+    for(let i=0;i<n;i++)for(let q=0;q<3;q++){sA[q]+=(A[i*4+q]-mA[q])**2;sB[q]+=(B[i*4+q]-mB[q])**2}
+    const full=fg.getImageData(0,0,sz,sz),d=full.data;
+    for(let q=0;q<3;q++){const ra=Math.max(.85,Math.min(1.2,Math.sqrt(sB[q]/(sA[q]||1)))),sh=(mB[q]-mA[q])*.7;
+      for(let i=0;i<sz*sz;i++){const v=(d[i*4+q]-mA[q])*ra+mA[q]+sh;d[i*4+q]=v<0?0:v>255?255:v}}
+    fg.putImageData(full,0,0)}catch(e){}
   // paste back with a soft face mask (outline minus forehead/hair), inverse of the alignment
   const W=tgtImg.width,H=tgtImg.height,out=mk(W,H),g=out.getContext('2d');g.drawImage(tgtImg,0,0);
   const L=mk(W,H),lg=L.getContext('2d'),inv=new DOMMatrix([Mt[0],Mt[1],Mt[2],Mt[3],Mt[4],Mt[5]]).inverse();
@@ -645,6 +655,14 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     mg2.fillStyle='#000';mg2.beginPath();lp.forEach((p,i)=>{const X=mx+(p[0]-mx)*1.18,Y=my+(p[1]-my)*1.3;i?mg2.lineTo(X,Y):mg2.moveTo(X,Y)});mg2.closePath();mg2.fill();
     const ml=mk(W,H),mlg=ml.getContext('2d');mlg.drawImage(tgtImg,0,0);mlg.globalCompositeOperation='destination-in';mlg.drawImage(mm,0,0);g.drawImage(ml,0,0);
   }
+  // facial-hair guard: if the target has a moustache, let its dark hair show through the swapped skin (no grey patch)
+  try{if(T.W&&T.W.length>NI){const lp=T.W.slice(NI),xs=lp.map(p=>p[0]),ys=lp.map(p=>p[1]),mx=(Math.min(...xs)+Math.max(...xs))/2,lw=Math.max(...xs)-Math.min(...xs),top=Math.min(...ys);
+    const tc=mk(W,H);tc.getContext('2d',{willReadFrequently:true}).drawImage(tgtImg,0,0);const lum=(x,y,r)=>{const d=tc.getContext('2d').getImageData(Math.max(0,x-r),Math.max(0,y-r),2*r,2*r).data;let s=0;for(let i=0;i<d.length;i+=4)s+=.3*d[i]+.59*d[i+1]+.11*d[i+2];return s/(d.length/4)};
+    const zy=top-0.2*lw,zl=lum(Math.round(mx),Math.round(zy),Math.max(2,Math.round(lw*.12))),ref=[lum(Math.round(mx-0.8*lw),Math.round(top-0.35*lw),Math.max(2,Math.round(lw*.1))),lum(Math.round(mx+0.8*lw),Math.round(top-0.35*lw),Math.max(2,Math.round(lw*.1)))];
+    const rf=(ref[0]+ref[1])/2;
+    if(zl<rf*0.8){const hm=mk(W,H),hg=hm.getContext('2d');if('filter' in hg)hg.filter='blur('+Math.max(1.5,lw/14)+'px)';hg.fillStyle='#000';hg.beginPath();hg.ellipse(mx,top-0.1*lw,lw*.62,lw*.2,0,0,7);hg.fill();
+      const hl=mk(W,H),hlg=hl.getContext('2d');hlg.drawImage(tgtImg,0,0);hlg.globalCompositeOperation='destination-in';hlg.drawImage(hm,0,0);
+      g.save();g.globalAlpha=.9;g.drawImage(hl,0,0);g.restore();out._must=true}}}catch(e){}
   out._sm=sm;
   try{localStorage.removeItem('nnGuard')}catch(e){}
   return out;
