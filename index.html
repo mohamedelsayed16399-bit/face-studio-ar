@@ -471,6 +471,23 @@ function faceLayer(src,S,T,W,H,dstForColor){
     for(let i=0;i<N;i++){const o=i*4;if(!d[o+3])continue;const l=0.3*d[o]+0.59*d[o+1]+0.11*d[o+2],k3=l/tl;
       for(let q=0;q<3;q++){const t=tr[q]*k3,v=d[o+q]*(1-CH)+t*CH;d[o+q]=v<0?0:v>255?255:v}}
   }
+  if(!window.noGeoHarm){ // local tone harmonize (alpha-weighted blur of target minus blur of face): kills tone bands around the mouth and cheeks
+    const r=Math.max(2,Math.round(Math.min(w,h)*(window.geoR||.06))),bx=(src,wgt,out,ow)=>{ // separable box blur of wgt*src and wgt
+      const t1=new Float32Array(N),t2=new Float32Array(N);
+      for(let y=0;y<h;y++){let s=0,c=0;for(let x=-r;x<=r;x++)if(x>=0&&x<w){s+=src[y*w+x]*wgt[y*w+x];c+=wgt[y*w+x]}for(let x=0;x<w;x++){t1[y*w+x]=s;t2[y*w+x]=c;const a=x+r+1,b=x-r;if(a<w){s+=src[y*w+a]*wgt[y*w+a];c+=wgt[y*w+a]}if(b>=0){s-=src[y*w+b]*wgt[y*w+b];c-=wgt[y*w+b]}}}
+      const u1=new Float32Array(N),u2=new Float32Array(N);
+      for(let x=0;x<w;x++){let s=0,c=0;for(let y=-r;y<=r;y++)if(y>=0&&y<h){s+=t1[y*w+x];c+=t2[y*w+x]}for(let y=0;y<h;y++){u1[y*w+x]=s;u2[y*w+x]=c;const a=y+r+1,b=y-r;if(a<h){s+=t1[a*w+x];c+=t2[a*w+x]}if(b>=0){s-=t1[b*w+x];c-=t2[b*w+x]}}}
+      for(let i=0;i<N;i++){out[i]=u2[i]>1e-3?u1[i]/u2[i]:-1;ow[i]=u2[i]}};
+    const wF=new Float32Array(N),wT=new Float32Array(N);let nz=0;
+    for(let i=0;i<N;i++){const a=d[i*4+3]/255;wF[i]=a;wT[i]=a>0?1:0;if(a>0)nz++}
+    if(nz>50)for(let q=0;q<3;q++){
+      const sF=new Float32Array(N),sT=new Float32Array(N),o1=new Float32Array(N),o2=new Float32Array(N),vf=new Float32Array(N),vt=new Float32Array(N);
+      for(let i=0;i<N;i++){sF[i]=d[i*4+q];sT[i]=D[i*4+q]}
+      // both blurs use the same weights (face alpha), so the shift is face-colour vs target-colour in the same pixels
+      bx(sF,wF,vf,o1);bx(sT,wF,vt,o2);
+      for(let i=0;i<N;i++){const o=i*4;if(!d[o+3]||vf[i]<0||vt[i]<0)continue;let df=(vt[i]-vf[i])*(window.geoK||.7);df=df<-60?-60:df>60?60:df;const v=d[o+q]+df;d[o+q]=v<0?0:v>255?255:v}
+    }
+  }
   g.putImageData(id,0,0);
   return{c:L,x:x0,y:y0};
 }
@@ -649,7 +666,7 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     fg.putImageData(full,0,0)}catch(e){}
   // local tone harmonize: replace the swapped face's low-frequency colour with the target's (kills grey eye-makeup / blotches, keeps detail)
   try{const bl=(c)=>{const t=mk(sz,sz),q=t.getContext('2d',{willReadFrequently:true});q.filter='blur('+Math.round(sz*.07)+'px)';q.drawImage(c,0,0);return q.getImageData(0,0,sz,sz).data};
-    const bF=bl(fk),bT=bl(ct),full=fg.getImageData(0,0,sz,sz),d=full.data,K=.8;
+    const bF=bl(fk),bT=bl(ct),full=fg.getImageData(0,0,sz,sz),d=full.data,K=window.nnHK||.8;
     for(let i=0;i<sz*sz;i++)for(let q=0;q<3;q++){let df=(bT[i*4+q]-bF[i*4+q])*K;df=df<-70?-70:df>70?70:df;const v=d[i*4+q]+df;d[i*4+q]=v<0?0:v>255?255:v}
     fg.putImageData(full,0,0)}catch(e){}
   // eye/brow guard: the swapped eye+brow area may not be darker than the target's own darkest nearby pixels (removes carried-over eyeliner/shadow/heavy brows)
@@ -671,7 +688,7 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   mg.save();mg.translate(T.cx,T.cy);mg.rotate(T.rot);mg.beginPath();mg.rect(-1e5,vcut,2e5,1e5);mg.clip();mg.rotate(-T.rot);mg.translate(-T.cx,-T.cy);
   const c=Math.cos(T.rot),sn=Math.sin(T.rot);mg.fillStyle='#000';mg.beginPath();
   T.P.forEach((p,i)=>{const dx=p[0]-T.cx,dy=p[1]-T.cy,u=(dx*c+dy*sn)*0.95,v=(-dx*sn+dy*c)*0.97,px=T.cx+u*c-v*sn,py=T.cy+u*sn+v*c;i?mg.lineTo(px,py):mg.moveTo(px,py)});mg.closePath();mg.fill();mg.restore();
-  const sm=mk(W,H),sg=sm.getContext('2d');if('filter' in sg)sg.filter='blur('+Math.max(1.5,Math.min(T.rx,T.ry)/12)+'px)';sg.drawImage(mc,0,0);
+  const sm=mk(W,H),sg=sm.getContext('2d');if('filter' in sg)sg.filter='blur('+Math.max(1.5,Math.min(T.rx,T.ry)/(window.nnFe||12))+'px)';sg.drawImage(mc,0,0);
   lg.globalCompositeOperation='destination-in';lg.drawImage(sm,0,0);
   const cm=mk(sz,sz),cg=cm.getContext('2d'),k=sz/128;if('filter' in cg)cg.filter='blur('+5*k+'px)';cg.fillStyle='#000';cg.fillRect(9*k,9*k,110*k,110*k);
   lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
@@ -888,7 +905,7 @@ function shareCanvas(cv,name){
   },'image/png');
 }
 $('#swDl').onclick=()=>dlCanvas(swResult,'face-swap.png');
-$('#swBA').onclick=()=>{if(!swResult||!swBefore)return;const h=swResult.height,w=swResult.width,c=document.createElement('canvas');c.width=w*2+6;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,h);g.drawImage(swBefore,0,0,w,h);g.drawImage(swResult,w+6,0);g.font='bold '+Math.max(12,Math.round(h/28))+'px sans-serif';g.fillStyle='rgba(0,0,0,.55)';g.fillText('قبل',8,Math.max(18,h/22));g.fillText('بعد',w+14,Math.max(18,h/22));dlCanvas(c,'face-before-after.png')};
+$('#swBA').onclick=()=>{if(!swResult||!swBefore)return;const h=swResult.height,w=swResult.width,c=document.createElement('canvas');c.width=w*2+6;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,h);g.drawImage(swBefore,0,0,w,h);g.drawImage(swResult,w+6,0);const fz=Math.max(16,Math.round(h/16)),pad=Math.round(fz*.4);g.font='bold '+fz+'px sans-serif';g.textBaseline='top';for(const [t,x0] of [['قبل',8],['بعد',w+14]]){const tw=g.measureText(t).width;g.fillStyle='rgba(0,0,0,.75)';g.fillRect(x0,8,tw+pad*2,fz+pad*2);g.fillStyle='#fff';g.fillText(t,x0+pad,8+pad)}dlCanvas(c,'face-before-after.png')};
 $('#swShare').onclick=()=>shareCanvas(swResult,'face-swap.png');
 $('#swToVid').onclick=()=>{addClip(swResult);toast('اتضافت للفيديو 🎬')};
 
@@ -1447,4 +1464,4 @@ $('#lightBtn').onclick=()=>{$('#swMode').value='two';$('#vfMode').value='photo';
 window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
 </body>
-</html>
+    </html>
