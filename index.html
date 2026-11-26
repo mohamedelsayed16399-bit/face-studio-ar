@@ -87,7 +87,7 @@ select,input,button{max-width:100%}.row{flex-wrap:wrap}#swMode{width:100%;box-si
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth" checked> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth" checked> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <label class="note"><input type="checkbox" id="nnEyes"> خلي عيون الصورة الأصلية (لو الميك آب بايظ العين)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -646,6 +646,16 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     const bF=bl(fk),bT=bl(ct),full=fg.getImageData(0,0,sz,sz),d=full.data,K=.8;
     for(let i=0;i<sz*sz;i++)for(let q=0;q<3;q++){let df=(bT[i*4+q]-bF[i*4+q])*K;df=df<-70?-70:df>70?70:df;const v=d[i*4+q]+df;d[i*4+q]=v<0?0:v>255?255:v}
     fg.putImageData(full,0,0)}catch(e){}
+  // eye/brow guard: the swapped eye+brow area may not be darker than the target's own darkest nearby pixels (removes carried-over eyeliner/shadow/heavy brows)
+  if(!window.nnNoEyeGuard)try{const full=fg.getImageData(0,0,sz,sz),d=full.data,tg=ct.getContext('2d').getImageData(0,0,sz,sz).data,N=sz*sz,lt=new Float32Array(N),mn=new Float32Array(N),tmp=new Float32Array(N);
+    for(let i=0;i<N;i++)lt[i]=.3*tg[i*4]+.59*tg[i*4+1]+.11*tg[i*4+2];
+    const r=Math.max(3,Math.round(sz*.05));
+    for(let y=0;y<sz;y++)for(let x=0;x<sz;x++){let m=255;for(let k=-r;k<=r;k++){const xx=x+k<0?0:x+k>=sz?sz-1:x+k;const v=lt[y*sz+xx];if(v<m)m=v}tmp[y*sz+x]=m}
+    for(let y=0;y<sz;y++)for(let x=0;x<sz;x++){let m=255;for(let k=-r;k<=r;k++){const yy=y+k<0?0:y+k>=sz?sz-1:y+k;const v=tmp[yy*sz+x];if(v<m)m=v}mn[y*sz+x]=m}
+    const E=[tpl[0],tpl[1]],dd=tpl[1][0]-tpl[0][0],M=-6;
+    for(let y=0;y<sz;y++)for(let x=0;x<sz;x++){let w=0;for(const e of E){const ex=(x-e[0])/(dd*.62),ey=(y-(e[1]-dd*.12))/(dd*.46),q=ex*ex+ey*ey;if(q<1){const v=q<.5?1:(1-q)*2;if(v>w)w=v}}
+      if(!w)continue;const i=y*sz+x,lo=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2],fl=mn[i]-M;if(lo<fl&&lo>1){const f=1+w*((fl/lo)-1);for(let q=0;q<3;q++){const v=d[i*4+q]*f;d[i*4+q]=v>255?255:v}}}
+    fg.putImageData(full,0,0)}catch(e){}
   // paste back with a soft face mask (outline minus forehead/hair), inverse of the alignment
   const W=tgtImg.width,H=tgtImg.height,out=mk(W,H),g=out.getContext('2d');g.drawImage(tgtImg,0,0);
   const L=mk(W,H),lg=L.getContext('2d'),inv=new DOMMatrix([Mt[0],Mt[1],Mt[2],Mt[3],Mt[4],Mt[5]]).inverse();
@@ -660,6 +670,12 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   const cm=mk(sz,sz),cg=cm.getContext('2d'),k=sz/128;if('filter' in cg)cg.filter='blur('+5*k+'px)';cg.fillStyle='#000';cg.fillRect(9*k,9*k,110*k,110*k);
   lg.setTransform(inv);lg.drawImage(cm,0,0);lg.setTransform(1,0,0,1,0,0);lg.globalCompositeOperation='source-over';
   g.globalAlpha=strength;g.drawImage(L,0,0);g.globalAlpha=1;
+  if(window.nnEyes||($('#nnEyes')&&$('#nnEyes').checked)){ // keep the target's own eyes (removes carried-over eye makeup)
+    const kp=nnKps(T),e0=kp[0],e1=kp[1],dd=Math.hypot(e1[0]-e0[0],e1[1]-e0[1]),em=mk(W,H),eg=em.getContext('2d');
+    if('filter' in eg)eg.filter='blur('+Math.max(1.5,dd/16)+'px)';eg.fillStyle='#000';
+    for(const e of [e0,e1]){eg.beginPath();eg.ellipse(e[0],e[1]-dd*.03,dd*.27,dd*.15,Math.atan2(e1[1]-e0[1],e1[0]-e0[0]),0,7);eg.fill()}
+    const el=mk(W,H),elg=el.getContext('2d');elg.drawImage(tgtImg,0,0);elg.globalCompositeOperation='destination-in';elg.drawImage(em,0,0);g.drawImage(el,0,0);
+  }
   if(keepMouth&&T.W&&T.W.length>NI){ // keep the target's own mouth (shape, teeth) so the expression doesn't change
     const lp=T.W.slice(NI);let mx=0,my=0;lp.forEach(p=>{mx+=p[0];my+=p[1]});mx/=lp.length;my/=lp.length;
     const mm=mk(W,H),mg2=mm.getContext('2d');if('filter' in mg2)mg2.filter='blur('+Math.max(1.5,T.rx/22)+'px)';
