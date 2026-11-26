@@ -668,6 +668,9 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     if(zl<rf*0.8){const hm=mk(W,H),hg=hm.getContext('2d');if('filter' in hg)hg.filter='blur('+Math.max(1.5,lw/14)+'px)';hg.fillStyle='#000';hg.beginPath();hg.ellipse(mx,top-0.1*lw,lw*.62,lw*.2,0,0,7);hg.fill();
       const hl=mk(W,H),hlg=hl.getContext('2d');hlg.drawImage(tgtImg,0,0);hlg.globalCompositeOperation='destination-in';hlg.drawImage(hm,0,0);
       g.save();g.globalAlpha=.9;g.drawImage(hl,0,0);g.restore();out._must=true}}}catch(e){}
+  // quality gate: does the result still look like the source person? (ArcFace similarity of result vs source)
+  try{if(IS_PHONE)throw 0;const k0=nnS.embKey,v0=nnS.emb;const e2=await nnEmbed(nnCrop(out,nnSim(nnKps(T),ARC_T),112),say),dot=(a,b)=>{let s=0,x=0,y=0;for(let i=0;i<512;i++){s+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i]}return s/Math.sqrt(x*y+1e-9)};
+    nnS.embKey=k0;nnS.emb=v0;out._sim=dot(emb,e2);window.__nnSimMin=Math.min(window.__nnSimMin===undefined?1:window.__nnSimMin,out._sim);console.log('MUST sim',out._sim.toFixed(3))}catch(e){}
   out._sm=sm;
   try{localStorage.removeItem('nnGuard')}catch(e){}
   return out;
@@ -796,13 +799,14 @@ $('#swGo').onclick=()=>{
     if(!T||!S||!T.W||!S.W){$('#swSt').textContent='محتاج وش في كل صورة';return}
     const say=t=>{$('#swSt').textContent=t};
     if(!nnS&&!confirm(NN_ASK()))return;
-    (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;
+    (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;window.__nnSimMin=undefined;
       const tg=swA.sel.length?swA.sel.map(i=>swA.faces[i]).filter(f=>f.W&&f.P):($('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T]);let out=swA.img;
       for(let k=0;k<tg.length;k++){
         if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
         out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
         if(enh>0){try{out=await nnEnhance(out,tg[k],say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}
-      }watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
+      }if(window.__nnSimMin!==undefined&&window.__nnSimMin<0.33){window.__nnHeld=out;say('⚠️ النتيجة طلعت مش طبيعية (التشابه مع وش المصدر '+Math.round(Math.max(0,window.__nnSimMin)*100)+'% بس) فمعرضتهاش عشان متتشوهش. جرّب صورة مصدر وشها واضح من قدّام وبدون مكياج عين تقيل أو نضارة.');return}
+      watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
   }
   if($('#swMode').value==='morph'){
