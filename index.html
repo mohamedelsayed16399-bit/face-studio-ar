@@ -90,7 +90,7 @@ select,input,button{max-width:100%}.row{flex-wrap:wrap}#swMode{width:100%;box-si
 <div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth" checked> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <label class="note"><input type="checkbox" id="nnEyes" checked> خلي عيون الصورة الأصلية (لو الميك آب بايظ العين)</label> <label class="note"><input type="checkbox" id="nnBrows" checked> خلي حواجب الصورة الأصلية (لو الحواجب متداخلة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
-<div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
+<div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button><button class="b g" id="swBA" disabled>↔️ حمّل قبل وبعد</button></div>
 <div class="row"><button class="b" id="lightBtn" type="button">⚡ وضع خفيف (من غير تحميل 415 ميجا، أسرع وأخف على الموبايل)</button></div>
 <div class="status" id="swSt"></div>
 <div class="note">النتيجة عليها علامة صغيرة "للمرح". استخدم صور ناس موافقة بس.</div>
@@ -526,7 +526,7 @@ $('#baSl').oninput=()=>{ // before/after slider: left = result, right = original
 };
 function showResult(cv){
   swResult=cv;swBefore=swA.img;const o=$('#swOut');o.width=cv.width;o.height=cv.height;o.getContext('2d').drawImage(cv,0,0);$('#baRow').style.display=swBefore?'':'none';$('#baSl').value=100;
-  ['#swDl','#swShare','#swToVid'].forEach(s=>$(s).disabled=false);
+  ['#swDl','#swShare','#swToVid','#swBA'].forEach(s=>$(s).disabled=false);
 }
 /* ---------- تبديل بنموذج AI (inswapper_128 + ArcFace عبر onnxruntime-web، كله في المتصفح) ---------- */
 const NN_ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
@@ -888,6 +888,7 @@ function shareCanvas(cv,name){
   },'image/png');
 }
 $('#swDl').onclick=()=>dlCanvas(swResult,'face-swap.png');
+$('#swBA').onclick=()=>{if(!swResult||!swBefore)return;const h=swResult.height,w=swResult.width,c=document.createElement('canvas');c.width=w*2+6;c.height=h;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,c.width,h);g.drawImage(swBefore,0,0,w,h);g.drawImage(swResult,w+6,0);g.font='bold '+Math.max(12,Math.round(h/28))+'px sans-serif';g.fillStyle='rgba(0,0,0,.55)';g.fillText('قبل',8,Math.max(18,h/22));g.fillText('بعد',w+14,Math.max(18,h/22));dlCanvas(c,'face-before-after.png')};
 $('#swShare').onclick=()=>shareCanvas(swResult,'face-swap.png');
 $('#swToVid').onclick=()=>{addClip(swResult);toast('اتضافت للفيديو 🎬')};
 
