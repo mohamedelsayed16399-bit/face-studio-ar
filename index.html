@@ -38,6 +38,7 @@ canvas.view{width:100%;height:auto;background:#0b0a12;border-radius:10px;touch-a
 .note{font-size:12px;color:#9a93ad}
 #toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#ffd24a;color:#1a1530;padding:10px 16px;border-radius:20px;font-weight:700;display:none;z-index:9;max-width:90%}
 video{width:100%;border-radius:10px;background:#000}
+select,input,button{max-width:100%}.row{flex-wrap:wrap}#swMode{width:100%;box-sizing:border-box;text-overflow:ellipsis}
 </style>
 </head>
 <body>
@@ -86,7 +87,7 @@ video{width:100%;border-radius:10px;background:#000}
 <label class="note"><input type="checkbox" class="fhBox" checked> استبعد الجبهة والشعر (أنضف)</label>
 <button class="b g" id="swShuf" title="كل وش ياخد مكان اللي بعده">🌀 اخلط كل الوجوه</button>
 </div>
-<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth"> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
+<div class="row" id="nnEnhRow" style="display:none"><span class="note">تحسين الوش (الوضع العصبي): </span><input type="range" id="nnEnh" min="0" max="100" value="75"><span class="note" id="nnEnhV">75%</span> <select id="nnModel"><option value="ss">SimSwap 256 (أحدّ، 220 ميجا، ممكن يعمل بقعة رمادية على الشنب)</option><option value="ss5">SimSwap 512 (تجريبي، تقيل: 239 ميجا ورام أكتر)</option><option value="insw">InSwapper 128 (278 ميجا)</option></select> <label class="note"><input type="checkbox" id="nnMouth" checked> خلي فم الصورة الأصلية (يثبّت الابتسامة)</label> <span class="note">قوة التبديل (قلّلها لو الشبه غريب): </span><input type="range" id="nnStr" min="30" max="100" value="100"><span class="note" id="nnStrV">100%</span> <label class="note"><input type="checkbox" id="nnAll"> بدّل كل الوجوه في الصورة بنفس الوش</label></div>
 <canvas class="view" id="swOut" width="300" height="150"></canvas>
 <div class="row" id="baRow" style="display:none"><span class="note">بعد</span><input type="range" id="baSl" min="0" max="100" value="100" style="flex:1"><span class="note">قبل</span></div>
 <div class="row"><button class="b" id="swDl" disabled>💾 حمّل الصورة</button><button class="b g" id="swShare" disabled>📤 شارك</button><button class="b g" id="swToVid" disabled>🎬 ضيفها للفيديو</button></div>
@@ -578,15 +579,18 @@ async function nnLoad(say,kind='insw'){
   swB=null;
   nnS={sw,emap,gpu,kind};return nnS;
 }
+let nnE={key:null,emb:null};
+function nnEKey(cs){return cs.getContext('2d').getImageData(0,0,112,112).data.join(',').length+':'+cs.toDataURL().slice(-64)}
 async function nnEmbed(cs,say){ // ArcFace is loaded only for this step and released right after, to keep memory low
-  const key=cs.getContext('2d').getImageData(0,0,112,112).data.join(',').length+':'+cs.toDataURL().slice(-64);
-  if(nnS.embKey===key)return nnS.emb;
-  const b=await nnFetch(NN_URL.arc,say,'تحميل نموذج بصمة الوش');
-  say('بحسب بصمة الوش...');
-  const arc=await ort.InferenceSession.create(b,NN_SO);
+  const key=nnEKey(cs);
+  if(nnE.key===key)return nnE.emb;
+  if(!window.nnArc){const b=await nnFetch(NN_URL.arc,say,'تحميل نموذج بصمة الوش');
+    say('بحسب بصمة الوش...');
+    window.nnArc=await ort.InferenceSession.create(b,NN_SO)}
+  const arc=window.nnArc;
   const emb=Float32Array.from((await arc.run({[arc.inputNames[0]]:nnTensor(cs,127.5,127.5)}))[arc.outputNames[0]].data);
-  try{await arc.release()}catch(e){}
-  nnS.embKey=key;nnS.emb=emb;return emb;
+  if(IS_PHONE){try{await arc.release()}catch(e){}window.nnArc=null} // phones: free the 174 MB right away
+  nnE.key=key;nnE.emb=emb;return emb;
 }
 function nnKps(F){ // 5 points from the MediaPipe landmarks: eyes, nose tip, mouth corners
   const w=F.W,av=(...i)=>[i.reduce((a,k)=>a+w[k][0],0)/i.length,i.reduce((a,k)=>a+w[k][1],0)/i.length];
@@ -603,15 +607,17 @@ function nnTensor(c,mean,std){const s=c.width,d=c.getContext('2d').getImageData(
 async function nnSwap(...a){try{return await nnSwap0(...a)}catch(e){try{localStorage.removeItem('nnGuard')}catch(_){}throw e}}
 async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   const kind=$('#nnModel').value,sz=kind==='ss5'?512:kind==='ss'?256:128,isSS=kind!=='insw';
-  const m=await nnLoad(say,kind);
+  try{localStorage.setItem('nnGuard','1')}catch(e){}
   say('بحسب بصمة الوش...');await new Promise(r=>setTimeout(r,30));
+  await nnOrt();
   const Ms=nnSim(nnKps(S),ARC_T),cs=nnCrop(srcImg,Ms,112);
   const emb=await nnEmbed(cs,say);
+  const m=await nnLoad(say,kind);
   let lat=new Float32Array(512),nrm=0;
   if(isSS){
     if(!m.lat||m.latFor!==emb){
-      const cb=await nnFetch(NN_URL.conv,say,'تحميل محوّل البصمة'),cs2=await ort.InferenceSession.create(cb,NN_SO);
-      const r=await cs2.run({[cs2.inputNames[0]]:new ort.Tensor('float32',Float32Array.from(emb),[1,512])});lat=Float32Array.from(r[cs2.outputNames[0]].data);try{await cs2.release()}catch(e){}
+      if(!window.nnConv){const cb=await nnFetch(NN_URL.conv,say,'تحميل محوّل البصمة');window.nnConv=await ort.InferenceSession.create(cb,NN_SO)}const cs2=window.nnConv;
+      const r=await cs2.run({[cs2.inputNames[0]]:new ort.Tensor('float32',Float32Array.from(emb),[1,512])});lat=Float32Array.from(r[cs2.outputNames[0]].data);
       nrm=0;for(let j=0;j<512;j++)nrm+=lat[j]*lat[j];nrm=Math.sqrt(nrm);for(let j=0;j<512;j++)lat[j]/=nrm;m.lat=lat;m.latFor=emb;
     }else lat=m.lat;
   }else{
@@ -669,8 +675,8 @@ async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
       const hl=mk(W,H),hlg=hl.getContext('2d');hlg.drawImage(tgtImg,0,0);hlg.globalCompositeOperation='destination-in';hlg.drawImage(hm,0,0);
       g.save();g.globalAlpha=.9;g.drawImage(hl,0,0);g.restore();out._must=true}}}catch(e){}
   // quality gate: does the result still look like the source person? (ArcFace similarity of result vs source)
-  try{if(IS_PHONE)throw 0;const k0=nnS.embKey,v0=nnS.emb;const e2=await nnEmbed(nnCrop(out,nnSim(nnKps(T),ARC_T),112),say),dot=(a,b)=>{let s=0,x=0,y=0;for(let i=0;i<512;i++){s+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i]}return s/Math.sqrt(x*y+1e-9)};
-    nnS.embKey=k0;nnS.emb=v0;out._sim=dot(emb,e2);window.__nnSimMin=Math.min(window.__nnSimMin===undefined?1:window.__nnSimMin,out._sim);console.log('MUST sim',out._sim.toFixed(3))}catch(e){}
+  try{if(IS_PHONE)throw 0;const k0=nnE.key,v0=nnE.emb;const e2=await nnEmbed(nnCrop(out,nnSim(nnKps(T),ARC_T),112),say),dot=(a,b)=>{let s=0,x=0,y=0;for(let i=0;i<512;i++){s+=a[i]*b[i];x+=a[i]*a[i];y+=b[i]*b[i]}return s/Math.sqrt(x*y+1e-9)};
+    nnE.key=k0;nnE.emb=v0;out._sim=dot(emb,e2);window.__nnSimMin=Math.min(window.__nnSimMin===undefined?1:window.__nnSimMin,out._sim);console.log('MUST sim',out._sim.toFixed(3))}catch(e){}
   out._sm=sm;
   try{localStorage.removeItem('nnGuard')}catch(e){}
   return out;
@@ -805,7 +811,7 @@ $('#swGo').onclick=()=>{
         if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
         out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
         if(enh>0){try{out=await nnEnhance(out,tg[k],say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}
-      }if(window.__nnSimMin!==undefined&&window.__nnSimMin<0.33){window.__nnHeld=out;say('⚠️ النتيجة طلعت مش طبيعية (التشابه مع وش المصدر '+Math.round(Math.max(0,window.__nnSimMin)*100)+'% بس) فمعرضتهاش عشان متتشوهش. جرّب صورة مصدر وشها واضح من قدّام وبدون مكياج عين تقيل أو نضارة.');return}
+      }if(window.__nnSimMin!==undefined&&window.__nnSimMin<(window.nnGate===undefined?0.25:window.nnGate)){window.__nnHeld=out;say('⚠️ النتيجة طلعت مش طبيعية (التشابه مع وش المصدر '+Math.round(Math.max(0,window.__nnSimMin)*100)+'% بس) فمعرضتهاش عشان متتشوهش. جرّب صورة مصدر وشها واضح من قدّام وبدون مكياج عين تقيل أو نضارة.');return}
       watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
   }
@@ -1256,7 +1262,7 @@ function trackStep(tracks,cur,K){
     let bi=-1,bd=1e18;
     cur.forEach((f,i)=>{if(used.has(i))return;const d=Math.hypot(f.cx-t.cx,f.cy-t.cy);if(d<bd){bd=d;bi=i}});
     if(bi>=0&&bd<Math.max(t.rx,t.ry)*2.5){
-      used.add(bi);const f=cur[bi],k=0.65,m=(a,b)=>a+(b-a)*k;
+      used.add(bi);const f=cur[bi],k=window.nnVidRaw?1:0.65,m=(a,b)=>a+(b-a)*k;
       const o={cx:m(t.cx,f.cx),cy:m(t.cy,f.cy),rx:m(t.rx,f.rx),ry:m(t.ry,f.ry),rot:m(t.rot,f.rot),miss:0,yaw:f.yaw,vb:(f.vb!==undefined&&t.vb!==undefined)?m(t.vb,f.vb):f.vb};
       if(f.P&&t.P&&f.A&&t.A){o.P=f.P.map((p,i)=>[m(t.P[i][0],p[0]),m(t.P[i][1],p[1])]);o.A=f.A.map((p,i)=>[m(t.A[i][0],p[0]),m(t.A[i][1],p[1])]);if(f.W&&t.W)o.W=f.W.map((p,i)=>[m(t.W[i][0],p[0]),m(t.W[i][1],p[1])])}else{o.P=f.P;o.A=f.A;o.W=f.W}
       return o;
