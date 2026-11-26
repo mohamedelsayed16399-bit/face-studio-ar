@@ -533,17 +533,28 @@ const ARC_V1=[[39.73,51.138],[72.27,51.138],[56.0,68.493],[42.463,87.01],[69.537
 const ARC_T=[[38.2946,51.6963],[73.5318,51.5014],[56.0252,71.7366],[41.5493,92.3655],[70.7299,92.2041]];
 let nnS=null;
 async function nnFetch(u,say,label){
-  const r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);
-  const tot=+r.headers.get('content-length')||0,rd=r.body.getReader();
-  if(tot){const out=new Uint8Array(tot);let got=0;for(;;){const {done,value}=await rd.read();if(done)break;out.set(value,got);got+=value.length;say(label+' '+(got/1048576|0)+' / '+(tot/1048576|0)+' ميجا')}return out}
-  return new Uint8Array(await r.arrayBuffer());
+  // models are kept in the browser's Cache Storage, so the 400 MB download happens only once per device
+  let cache=null;try{if(window.caches)cache=await caches.open('nn-models-v1')}catch(e){}
+  let r=null;if(cache){try{r=await cache.match(u)}catch(e){}}
+  let putP=null;
+  if(!r){r=await fetch(u);if(!r.ok)throw new Error('HTTP '+r.status);if(cache)putP=cache.put(u,r.clone()).catch(()=>{})}
+  const tot=+r.headers.get('content-length')||0,rd=r.body.getReader();let res;
+  if(tot){const out=new Uint8Array(tot);let got=0;for(;;){const {done,value}=await rd.read();if(done)break;out.set(value,got);got+=value.length;say(label+' '+(got/1048576|0)+' / '+(tot/1048576|0)+' ميجا')}res=out}
+  else res=new Uint8Array(await r.arrayBuffer());
+  if(putP)await putP;
+  return res;
 }
 const NN_SO={executionProviders:['wasm'],graphOptimizationLevel:'disabled',enableCpuMemArena:false,enableMemPattern:false};
 async function nnOrt(){
   if(!window.ort){await new Promise((res,rej)=>{const s=document.createElement('script');s.src=NN_ORT+'ort.min.js';s.onload=res;s.onerror=()=>rej(new Error('تعذّر تحميل onnxruntime'));document.head.appendChild(s)})}
   ort.env.wasm.wasmPaths=NN_ORT;ort.env.wasm.numThreads=1;
 }
+const IS_PHONE=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)||!!(navigator.deviceMemory&&navigator.deviceMemory<=4);
+const NN_ASK=()=>IS_PHONE?'الوضع ده بينزّل حوالي 415 ميجا مرة واحدة وبيتحفظ في الموبايل، وبيحتاج رام كفاية (يفضّل 6 جيجا). لو الصفحة قفلت هرجّعك للوضع الخفيف تلقائيًا. تكمّل؟':'الوضع ده بينزّل حوالي 420 ميجا مرة واحدة (ولو التحسين شغال +76 ميجا) وبيحتاج رام كبيرة. تكمّل؟';
+const nnBlocked=()=>{try{return localStorage.getItem('nnBlocked')==='1'}catch(e){return false}};
 async function nnLoad(say,kind='insw'){
+  if(nnBlocked()&&!window.nnForce){if(!confirm('الموديل الذكي قفل الصفحة قبل كده على جهازك (الرام مش كفاية غالبًا). تجرّبه تاني؟'))throw new Error('الموديل الذكي متوقف على جهازك، استخدم الوضع الخفيف');window.nnForce=true;try{localStorage.removeItem('nnBlocked')}catch(e){}}
+  try{localStorage.setItem('nnGuard','1')}catch(e){}
   if(nnS&&nnS.kind===kind)return nnS;
   if(nnS){try{await nnS.sw.release()}catch(e){}nnS=null}
   await nnOrt();
@@ -589,7 +600,8 @@ function nnSim(src,dst){
 function nnTensorIN(c){const s=c.width,d=c.getContext('2d').getImageData(0,0,s,s).data,t=new Float32Array(3*s*s),M=[0.485,0.456,0.406],D=[0.229,0.224,0.225];for(let i=0;i<s*s;i++)for(let q=0;q<3;q++)t[q*s*s+i]=(d[i*4+q]/255-M[q])/D[q];return new ort.Tensor('float32',t,[1,3,s,s])}
 function nnCrop(img,M,size){const c=mk(size,size),g=c.getContext('2d',{willReadFrequently:true});g.imageSmoothingQuality='high';g.setTransform(M[0],M[1],M[2],M[3],M[4],M[5]);g.drawImage(img,0,0);return c}
 function nnTensor(c,mean,std){const s=c.width,d=c.getContext('2d').getImageData(0,0,s,s).data,t=new Float32Array(3*s*s);for(let i=0;i<s*s;i++)for(let q=0;q<3;q++)t[q*s*s+i]=(d[i*4+q]-mean)/std;return new ort.Tensor('float32',t,[1,3,s,s])}
-async function nnSwap(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
+async function nnSwap(...a){try{return await nnSwap0(...a)}catch(e){try{localStorage.removeItem('nnGuard')}catch(_){}throw e}}
+async function nnSwap0(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
   const kind=$('#nnModel').value,sz=kind==='ss5'?512:kind==='ss'?256:128,isSS=kind!=='insw';
   const m=await nnLoad(say,kind);
   say('بحسب بصمة الوش...');await new Promise(r=>setTimeout(r,30));
@@ -634,6 +646,7 @@ async function nnSwap(srcImg,S,tgtImg,T,say,strength=1,keepMouth=false){
     const ml=mk(W,H),mlg=ml.getContext('2d');mlg.drawImage(tgtImg,0,0);mlg.globalCompositeOperation='destination-in';mlg.drawImage(mm,0,0);g.drawImage(ml,0,0);
   }
   out._sm=sm;
+  try{localStorage.removeItem('nnGuard')}catch(e){}
   return out;
 }
 // face restoration (GPEN-BFR-256, 76 MB): re-crop the finished face, restore detail, paste back inside the same soft face mask
@@ -745,7 +758,7 @@ $('#swGo').onclick=()=>{
     let ids=swA.sel.length>=2?swA.sel.slice():swA.faces.map((f,i)=>i);
     const fs=ids.map(i=>swA.faces[i]).filter(f=>f&&f.W&&f.P);
     if(fs.length<2){say('محتاج وشّين على الأقل في الصورة. دوس على الوجوه اللي عايز تبدّلهم (أو اضغط اختار كل الوجوه).');return}
-    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 420 ميجا مرة واحدة. تكمّل؟'))return;
+    if(!nnS&&!confirm(NN_ASK()))return;
     (async()=>{try{const t0=performance.now(),enh=$('#nnEnh').value/100;let out=swA.img;
       for(let k=0;k<fs.length;k++){
         say('وش '+(k+1)+' من '+fs.length+'...');
@@ -759,7 +772,7 @@ $('#swGo').onclick=()=>{
     const T=swA.pick(),S=swB.pick();
     if(!T||!S||!T.W||!S.W){$('#swSt').textContent='محتاج وش في كل صورة';return}
     const say=t=>{$('#swSt').textContent=t};
-    if(!nnS&&!confirm('الوضع ده بينزّل حوالي 420 ميجا (ولو التحسين شغال +76 ميجا) (مرة واحدة) وبيحتاج رام كبيرة (4 جيجا أو أكتر). غالبًا بيشتغل على الكمبيوتر بس، والموبايل ممكن يقفل الصفحة. تكمّل؟'))return;
+    if(!nnS&&!confirm(NN_ASK()))return;
     (async()=>{try{const t0=performance.now();const enh=$('#nnEnh').value/100;
       const tg=swA.sel.length?swA.sel.map(i=>swA.faces[i]).filter(f=>f.W&&f.P):($('#nnAll').checked?swA.faces.filter(f=>f.W&&f.P):[T]);let out=swA.img;
       for(let k=0;k<tg.length;k++){
@@ -1244,7 +1257,7 @@ async function vfProcess(maxSec){
   let tracks=[],vel=[],found=0,skipYaw=0,seenFace=0,t0=performance.now();
   if(mode==='nn'&&!S.W){$('#vfSt').textContent='مش لاقي نقط الوش في الصورة. دوس على الوش تاني.';return false}
   const vsay=t=>{if(/ميجا|تحميل|بجهّز/.test(t))$('#vfSt').textContent=t};
-  if(mode==='nn'&&!nnS&&!confirm('التبديل الذكي بينزّل حوالي 420 ميجا مرة واحدة وبياخد وقت. تكمّل؟'))return false;
+  if(mode==='nn'&&!nnS&&!confirm(NN_ASK()))return false;
   if(vfF.img&&vfF.faces.length&&vfF.sel.length>=K){const kk=W/vfF.img.width;tracks=vfF.sel.slice(0,K).map(i=>({...scaleFace(vfF.faces[i],kk),miss:0})).sort((a,b)=>a.cx-b.cx)}
   for(let i=0;i<n;i++){
     if(vf.cancel)return false;
@@ -1358,6 +1371,15 @@ $('#vfPrev3').onclick=()=>vfRun(3);
 $('#vfStop').onclick=()=>{vf.cancel=true;$('#vfSt').textContent='اتلغى.'};
 
 document.querySelectorAll('.fhBox').forEach(b=>b.onchange=()=>{FH=b.checked;document.querySelectorAll('.fhBox').forEach(x=>x.checked=FH)});
+try{if(localStorage.getItem('nnGuard')){localStorage.removeItem('nnGuard');localStorage.setItem('nnBlocked','1')}}catch(e){}
+if(IS_PHONE){
+  $('#nnModel').value='ss';[...$('#nnModel').options].forEach(o=>{if(o.value!=='ss')o.remove()});
+  $('#nnEnh').value=0;$('#nnEnhV').textContent='0%';$('#vfSize').value='360';$('#vfNnFps').value='3';
+}
+if(nnBlocked()){
+  $('#swMode').value='two';$('#vfMode').value='photo';
+  $('#swSt').textContent=$('#vfSt').textContent='⚠️ الموديل الذكي قفل الصفحة المرة اللي فاتت (الرام مش كفاية). حوّلتك للوضع الخفيف. تقدر ترجع للذكي من القايمة وهيسألك قبلها.';
+}
 $('#swMode').onchange();$('#vfMode').onchange();
 window.__dbg={setFH:v=>{FH=v},setHR:v=>{HR=v},vf,vfF,vfP,clips,TPL,Slot,swA,swB,tpl,start,opts,list,renderFrame,faceLayer,detectFaces,addClip,renderTpl};
 </script>
