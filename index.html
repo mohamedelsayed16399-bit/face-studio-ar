@@ -856,7 +856,7 @@ $('#swGo').onclick=()=>{
         if(tg.length>1)say('وش '+(k+1)+' من '+tg.length+'...');
         out=await nnSwap(swB.img,S,out,tg[k],say,$('#nnStr').value/100,$('#nnMouth').checked);
         if(enh>0){try{out=await nnEnhance(out,tg[k],say,enh)}catch(e){say('المحسّن مشتغلش ('+(e.message||e)+')، هكمل من غيره')}}
-      }if(window.__nnSimMin!==undefined&&window.__nnSimMin<(window.nnGate===undefined?0.25:window.nnGate)){window.__nnHeld=out;say('⚠️ النتيجة طلعت مش طبيعية (التشابه مع وش المصدر '+Math.round(Math.max(0,window.__nnSimMin)*100)+'% بس) فمعرضتهاش عشان متتشوهش. جرّب صورة مصدر وشها واضح من قدّام وبدون مكياج عين تقيل أو نضارة.');return}
+      }if(window.__nnSimMin!==undefined&&window.__nnSimMin<(window.nnGate===undefined?0.12:window.nnGate)){window.__nnHeld=out;say('⚠️ النتيجة طلعت مش طبيعية (التشابه مع وش المصدر '+Math.round(Math.max(0,window.__nnSimMin)*100)+'% بس) فمعرضتهاش عشان متتشوهش. جرّب صورة مصدر وشها واضح من قدّام وبدون مكياج عين تقيل أو نضارة.');return}
       watermark(out);showResult(out);say('تمّ ✅ ('+((performance.now()-t0)/1000).toFixed(1)+' ث)')}catch(e){say('تعذّر تشغيل النموذج في المتصفح ده: '+(e.message||e)+'. استخدم وضع المورف.')}})();
     return;
   }
